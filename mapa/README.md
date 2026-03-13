@@ -1,6 +1,6 @@
-# Mapa do Brasil com D3.js
+# Bases da Suzano no Brasil
 
-Projeto em HTML + JavaScript que utiliza D3.js para visualizar a atuação da Suzano no território brasileiro, combinando:
+Projeto em HTML + JavaScript (com D3.js) para visualizar a atuação da Suzano no território brasileiro, combinando:
 
 - mapa coroplético por estado (com destaque de atuação);
 - painel contextual com resumo por estado;
@@ -123,9 +123,10 @@ E abra `http://localhost:5123`.
 
 ## Estrutura do projeto
 
-- `index.html`: estrutura da interface, painel de detalhes, legenda e estilos.
-- `script.js`: pipeline de dados, desenho do mapa, interações, zoom/pan e tooltips.
+- `index.html`: estrutura da interface, estilos e script principal (inline) com pipeline de dados, desenho do mapa, interações, zoom/pan e tooltips.
 - `fazendasUPS.csv`: dados de localização e atributos operacionais.
+
+> Observação: a lógica JavaScript foi incorporada diretamente no `index.html`.
 
 ## Limitações atuais
 
