@@ -24,7 +24,6 @@
           system-ui,
           -apple-system,
           sans-serif;
-        background: #f0f2f5;
         color: #1e293b;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
@@ -37,11 +36,6 @@
       }
 
       .chart-card {
-        background: #ffffff;
-        border-radius: 20px;
-        box-shadow:
-          0 1px 3px rgba(15, 23, 42, 0.04),
-          0 8px 32px rgba(15, 23, 42, 0.06);
         padding: 32px 32px 24px 32px;
       }
 
@@ -205,21 +199,7 @@
   <body>
     <div class="wrapper">
       <div class="chart-card">
-        <div class="header">
-          <div class="header-text">
-            <h1 class="title">Alocação de recursos por rastreador e UP</h1>
-            <p class="subtitle">
-              Cada fluxo representa um recurso enviado de um rastreador para uma
-              UP. A cor identifica o tipo de recurso.
-            </p>
-          </div>
-        </div>
-
         <div id="sankey"></div>
-
-        <div class="footer-note">
-          Troque o array <code>rawAllocations</code> pelos seus dados reais.
-        </div>
       </div>
     </div>
 
@@ -231,24 +211,26 @@
       } from "https://cdn.jsdelivr.net/npm/d3-sankey@0.12/+esm";
 
       const trackerOrder = ["X", "Y", "Z"];
-      const upOrder = ["C2CE", "UP Norte", "UP Sul", "UP Leste"];
+      const upOrder = ["C2CE", "C2CE", "UP Sul", "UP Leste"];
 
       const resourceOrder = [
         "Avião",
+        "Bomba costal",
+        "Caminhão Pipa",
+        "Drone",
         "Helicóptero",
-        "Veículo 4x2",
-        "Caminhão",
-        "Pick-up",
-        "Brigadista",
+        "Motoserra",
+        "Soprador",
       ];
 
       const resourceColors = {
         Avião: "#4F8FF7",
+        "Bomba costal": "#F0A830",
+        "Caminhão Pipa": "#F06B6B",
+        Drone: "#34C38F",
         Helicóptero: "#22B8CF",
-        "Veículo 4x2": "#F0A830",
-        Caminhão: "#F06B6B",
-        "Pick-up": "#34C38F",
-        Brigadista: "#9B7BF7",
+        Motoserra: "#9B7BF7",
+        Soprador: "#8B5CF6",
       };
 
       const nodeColors = {
@@ -262,59 +244,38 @@
           up: "C2CE",
           resources: {
             Avião: 4,
+            "Bomba costal": 3,
+            "Caminhão Pipa": 2,
+            Drone: 1,
             Helicóptero: 1,
-            "Veículo 4x2": 0,
-            Caminhão: 2,
-            "Pick-up": 0,
-            Brigadista: 3,
+            Motoserra: 2,
+            Soprador: 2,
           },
         },
         {
           tracker: "Y",
           up: "C2CE",
           resources: {
-            Avião: 0,
+            Avião: 1,
+            "Bomba costal": 2,
+            "Caminhão Pipa": 1,
+            Drone: 2,
             Helicóptero: 2,
-            "Veículo 4x2": 1,
-            Caminhão: 0,
-            "Pick-up": 2,
-            Brigadista: 0,
+            Motoserra: 1,
+            Soprador: 1,
           },
         },
         {
           tracker: "Z",
-          up: "UP Norte",
+          up: "C2CE",
           resources: {
-            Avião: 0,
-            Helicóptero: 0,
-            "Veículo 4x2": 2,
-            Caminhão: 1,
-            "Pick-up": 0,
-            Brigadista: 2,
-          },
-        },
-        {
-          tracker: "X",
-          up: "UP Sul",
-          resources: {
-            Avião: 1,
-            Helicóptero: 0,
-            "Veículo 4x2": 0,
-            Caminhão: 1,
-            "Pick-up": 1,
-            Brigadista: 0,
-          },
-        },
-        {
-          tracker: "Y",
-          up: "UP Leste",
-          resources: {
-            Avião: 0,
+            Avião: 2,
+            "Bomba costal": 1,
+            "Caminhão Pipa": 1,
+            Drone: 1,
             Helicóptero: 1,
-            "Veículo 4x2": 0,
-            Caminhão: 2,
-            "Pick-up": 0,
-            Brigadista: 1,
+            Motoserra: 2,
+            Soprador: 1,
           },
         },
       ];
@@ -599,7 +560,7 @@
           .attr("opacity", 0)
           .transition()
           .duration(600)
-          .delay((d, i) => 200 + i * 60)
+          .delay((d, i) => 20 + i * 60)
           .ease(d3.easeCubicOut)
           .attr("opacity", 1);
 
@@ -631,12 +592,12 @@
 
             links
               .transition()
-              .duration(200)
+              .duration(20)
               .attr("stroke-opacity", (l) => (l === d ? 0.85 : 0.08));
 
             nodes
               .transition()
-              .duration(200)
+              .duration(20)
               .style("opacity", (n) =>
                 n.id === d.source.id || n.id === d.target.id ? 1 : 0.2,
               );
@@ -673,14 +634,14 @@
 
             links
               .transition()
-              .duration(200)
+              .duration(20)
               .attr("stroke-opacity", (l) =>
                 l.source.id === d.id || l.target.id === d.id ? 0.85 : 0.06,
               );
 
             nodes
               .transition()
-              .duration(200)
+              .duration(20)
               .style("opacity", (n) => (connected.has(n.id) ? 1 : 0.2));
           })
           .on("mouseleave", function () {

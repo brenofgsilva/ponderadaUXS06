@@ -18,7 +18,7 @@
       - [Explicação Técnica](#explicação-técnica-2)
     - [4. Diagrama Sankey de Distribuição de Recursos](#4-diagrama-sankey-de-distribuição-de-recursos)
       - [Relevância](#relevância-3)
-      - [Explicação Técnica](#explicação-técnica-3)
+      - [Evolução da Visualização](#evolução-da-visualização)
   - [Como Executar](#como-executar)
 
 ## Contexto do Projeto
@@ -137,30 +137,35 @@ A visualização utiliza:
 
 #### Relevância
 
-O diagrama Sankey é uma ferramenta poderosa para **visualizar fluxos de recursos ao longo de múltiplas etapas**, permitindo:
+O diagrama Sankey é uma ferramenta poderosa para visualizar fluxos de recursos ao longo de múltiplas etapas, permitindo:
 
-- **Rastrear a jornada dos recursos** desde as centrais até as UPs afetadas
-- **Identificar perdas e ineficiências** ao longo do processo (por exemplo, recursos mobilizados mas não utilizados)
-- **Comunicar complexidade logística** de forma intuitiva para stakeholders não-técnicos
+- **Rastrear a jornada dos recursos** desde os rastreadores até as UPs afetadas
+- **Comunicar complexidade logística** de forma intuitiva
 - **Auditar decisões** de mobilização em análises pós-ocorrência
 
-Para **Gerson** (gestor), o Sankey oferece uma narrativa visual clara para apresentações à diretoria. Para **Márcia** (operadora), contextualiza suas decisões dentro do fluxo completo de atendimento.
+Para **Gerson** (gestor), o Sankey oferece uma narrativa visual clara para apresentações à diretoria. Para **Márcia** (operadora), apresenta as decisões do algoritmo de forma mais intuitiva.
 
-#### Explicação Técnica
+#### Evolução da Visualização
 
-O Sankey representa:
+**Sankey Antigo (Versão Inicial):**
 
-- **Nós de origem**: Centrais operacionais com estoque inicial de recursos
-- **Nós intermediários**: Categorias de recursos (Aeronaves, Terrestres, Brigadistas)
-- **Nós de destino**: UPs que receberam os recursos
-- **Fluxos**: Representados por fitas cuja largura é proporcional ao volume de recursos
+![Sankey Antigo](./assets/old-sankey.png)
 
-Características técnicas:
+**Sankey Novo (Versão Refinada):**
 
-- **Renderização em D3-sankey** (plugin oficial do D3.js)
-- **Normalização de valores** para garantir comparabilidade entre diferentes tipos de recursos
-- **Interatividade**: hover para exibir valores exatos, filtros temporais para análise histórica
-- **Exportação**: possibilidade de gerar imagens estáticas (SVG/PNG) para relatórios
+![Sankey Novo](./assets/new-sankey.png)
+
+Com as recentes melhorias e ajustes no cenário, a visualização evoluiu para representar um contexto mais direto e realista da operação de combate a incêndios. Foram aplicadas as seguintes melhorias na nova versão estrutural:
+
+- **Simplificação da Estrutura (De 3 para 2 camadas):** A versão anterior possuía 3 colunas (Rastreador → Recurso → UP), onde os recursos atuavam como nós intermediários. Na nova versão, adotou-se uma estrutura mais concisa com apenas 2 colunas principais (Rastreadores → UPs).
+- **Recursos Representados por Fluxos:** O tipo de recurso (Avião, Bomba Costal, Caminhão Pipa, Drone, Helicóptero, Motoserra, Soprador) agora é representado pela **cor dos próprios fluxos (links)** de conexão. Uma nova legenda clara foi adicionada para facilitar a identificação visual rápida de cada mobilização.
+- **Interatividade Aprimorada e Tooltips:** Foram implementados efeitos de *hover* dinâmicos nos nós e vínculos. Ao posicionar o mouse sobre um elemento, o restante ganha opacidade e a seleção é realçada, enquanto um **tooltip detalhado** aparece automaticamente listando a origem, destino, tipo de recurso mobilizado e sua quantidade correspondente exata.
+
+**SankeyNovo com Tooltips e Hover:**
+
+![Sankey Novo](./assets/new-sankey-tooltip.png)
+
+
 
 ## Como Executar
 
