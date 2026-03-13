@@ -164,6 +164,6 @@ Características técnicas:
 
 ## Como Executar
 
-Para visualizar os mapas e gráficos desenvolvidos, navegue até o arquivo html correspondente a cada visualização e abra-o em um navegador web moderno.
+Para visualizar os mapas e gráficos desenvolvidos, navegue até o arquivo html correspondente de cada dupla e abra-o em um navegador web moderno.
 
 Para facilitar, instale a biblioteca **Live Server** (disponível como extensão para VS Code) e execute o comando "Live Server: Open with Live Server" no arquivo `html` de cada visualização. Isso garantirá que as dependências do D3.js sejam carregadas corretamente e permitirá interatividade total com os gráficos.
