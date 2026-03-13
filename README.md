@@ -53,24 +53,95 @@ Todas as visualizações foram desenvolvidas em **D3.js** e são integradas ao s
 
 #### Relevância
 
-O mapa de calor é uma ferramenta fundamental para **análise espacial de risco**, permitindo identificar:
+O **Mapa de Calor dos Focos de Incêndio** é uma ferramenta essencial para **análise geoespacial** e **gestão de risco ambiental**. Ele permite transformar grandes volumes de registros históricos de incêndios em uma visualização intuitiva, facilitando a identificação de **padrões e tendências ao longo do território monitorado**.
 
-- **Regiões com maior densidade de focos de incêndio** ao longo do tempo
-- **Padrões sazonais e climáticos** que influenciam a ocorrência de queimadas
-- **Áreas críticas** que demandam atenção preventiva e posicionamento estratégico de recursos
+Ao consolidar os dados em uma representação visual baseada em intensidade, o mapa possibilita identificar rapidamente **regiões com maior concentração de ocorrências**, conhecidas como *hotspots*. Essas áreas representam locais com maior probabilidade de novos eventos, seja por fatores **ambientais, climáticos ou operacionais**.
 
-Esta visualização suporta tanto decisões táticas (onde posicionar brigadas preventivamente) quanto estratégicas (investimento em infraestrutura de monitoramento).
+Essa visualização contribui diretamente para diferentes níveis de **tomada de decisão**:
+
+- **Monitoramento operacional:** identificação de áreas que demandam vigilância mais frequente  
+- **Planejamento preventivo:** definição estratégica do posicionamento de brigadas e equipamentos  
+- **Gestão de recursos:** priorização de investimentos em infraestrutura de combate e monitoramento  
+- **Análise histórica:** compreensão de padrões sazonais relacionados a clima, seca e atividades humanas  
+
+Além disso, ao cruzar os dados de incêndio com informações de **UPs (Unidades de Produção)**, **fazendas**, **áreas operacionais** e **núcleos**, o sistema permite compreender como os focos se distribuem dentro da área de atuação da empresa, auxiliando no **planejamento de ações preventivas** e **respostas rápidas**.
+
+
 
 #### Explicação Técnica
 
-O mapa utiliza:
+A implementação do mapa de calor utiliza **técnicas modernas de visualização de dados geoespaciais**, integrando diferentes camadas de informação em uma única **interface interativa**.
 
-- **Base cartográfica real** das regiões onde a Suzano opera
-- **Sobreposição de camadas de calor** (heatmap) com intensidade proporcional à frequência e gravidade dos focos
-- **Integração com dados históricos** de incêndios e condições meteorológicas
-- **Renderização em D3.js** com projeções geográficas (D3-geo) para precisão cartográfica
+O sistema é construído a partir de **três componentes principais**.
 
-A intensidade das cores reflete a concentração de ocorrências, permitindo identificar visualmente **hotspots críticos** que requerem monitoramento reforçado.
+
+
+**1. Base Cartográfica**
+
+O mapa utiliza uma **base geográfica real das regiões onde a Suzano opera**, representada através de arquivos cartográficos (**GeoJSON** ou **TopoJSON**). Esses arquivos contêm os **limites territoriais** que permitem posicionar corretamente os dados sobre o mapa.
+
+A renderização é feita utilizando a biblioteca **D3.js**, especificamente o módulo **D3-geo**, que projeta **coordenadas geográficas (latitude e longitude)** para o sistema de coordenadas da tela.
+
+
+
+**2. Integração de Dados Operacionais**
+
+O sistema utiliza **dois conjuntos principais de dados**.
+
+**Arquivo de UPs**
+
+Contém informações estruturais das unidades operacionais:
+
+- UP  
+- Fazenda  
+- Área  
+- Núcleo  
+- Latitude  
+- Longitude  
+
+Esse arquivo define os **pontos geográficos fixos** onde os recursos operacionais estão localizados.
+
+**Arquivo de Incêndios**
+
+Contém os registros históricos de ocorrências:
+
+- UP  
+- Data de Registro  
+
+A partir desses dados, o sistema realiza automaticamente o cálculo de:
+
+- Quantidade de ocorrências por UP
+- Frequência de incêndios ao longo do tempo
+- Distribuição espacial dos focos
+
+Esses cálculos são processados dinamicamente no navegador utilizando **JavaScript** e **D3**.
+
+
+
+#### 3. Geração do Heatmap
+
+Após o processamento dos dados, o sistema gera uma **camada de calor (*heatmap*)** sobre o mapa.
+
+Cada ponto associado a uma **UP** recebe um **peso proporcional ao número de ocorrências registradas**. A intensidade visual é então representada por um **gradiente de cores**, onde:
+
+- **Cores claras (amarelo)** → baixa concentração de ocorrências  
+- **Cores intermediárias (laranja)** → concentração moderada  
+- **Cores quentes (vermelho)** → alta concentração de focos  
+
+Esse tipo de visualização permite representar rapidamente a **densidade espacial dos eventos**, transformando dados complexos em uma leitura visual simples. Em mapas de calor, regiões com maior intensidade de dados aparecem com **cores mais fortes**, facilitando a identificação de **áreas críticas**.
+
+
+
+#### Benefícios para o Sistema
+
+A utilização de um mapa de calor traz diversos benefícios para o sistema de monitoramento:
+
+- Redução do tempo de análise de dados
+- Identificação visual imediata de áreas críticas
+- Melhoria no planejamento logístico das brigadas
+- Base para modelos preditivos de risco de incêndio
+
+![Mapa de Calor de Focos de Incêndio](/assets/heatmap.png)
 
 ### 2. Grafo Bipartido de Alocação de Recursos
 

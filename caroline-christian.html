@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Monitoramento de Incêndios</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+
+:root{
+--bg:#f6f8f7;
+--panel:#ffffff;
+--border:#e4e8e6;
+--text:#1b1f1d;
+--muted:#6a726f;
+--shadow:0 10px 30px rgba(0,0,0,0.08);
+}
+
+*{
+box-sizing:border-box;
+}
+
+body{
+margin:0;
+font-family:"Inter",sans-serif;
+background:linear-gradient(180deg,#fafafa,var(--bg));
+color:var(--text);
+}
+
+main{
+width:min(1200px,95%);
+margin:auto;
+padding:40px 0;
+}
+
+.hero{
+margin-bottom:26px;
+}
+
+.hero h1{
+margin:0;
+font-size:40px;
+font-weight:700;
+}
+
+.hero p{
+margin-top:8px;
+max-width:720px;
+color:var(--muted);
+line-height:1.6;
+}
+
+.map-shell{
+background:var(--panel);
+border-radius:24px;
+border:1px solid var(--border);
+box-shadow:var(--shadow);
+padding:20px;
+}
+
+.map-header{
+display:flex;
+justify-content:space-between;
+align-items:center;
+margin-bottom:12px;
+}
+
+.map-header h2{
+margin:0;
+font-size:18px;
+}
+
+.map-frame{
+position:relative;
+height:620px;
+border-radius:18px;
+overflow:hidden;
+
+display:flex;
+align-items:center;
+justify-content:center;
+
+background:
+linear-gradient(
+180deg,
+rgba(255,255,255,0.7),
+rgba(230,240,238,0.7)
+);
+}
+
+#map{
+width:100%;
+height:100%;
+}
+
+.tooltip{
+position:absolute;
+padding:8px 12px;
+background:#111;
+color:white;
+font-size:12px;
+border-radius:8px;
+pointer-events:none;
+opacity:0;
+transform:translate(-50%,-120%);
+transition:opacity .15s;
+}
+
+.legend{
+margin-top:14px;
+display:flex;
+align-items:center;
+gap:10px;
+font-size:13px;
+color:var(--muted);
+}
+
+.legend-gradient{
+width:180px;
+height:10px;
+border-radius:6px;
+
+background:linear-gradient(
+90deg,
+#ffffcc,
+#ffeda0,
+#feb24c,
+#f03b20,
+#bd0026
+);
+}
+
+@media(max-width:900px){
+
+.map-frame{
+height:480px;
+}
+
+.hero h1{
+font-size:30px;
+}
+
+}
+
+</style>
+
+</head>
+
+<body>
+
+<main>
+
+<section class="hero">
+
+<h1>Monitoramento de Focos de Incêndio</h1>
+
+<p>
+Visualização geográfica de focos de incêndio utilizando D3.js.
+O mapa apresenta um heatmap baseado na densidade de ocorrências
+registradas próximas às UPs no estado do Mato Grosso do Sul.
+</p>
+
+</section>
+
+<section class="map-shell">
+
+<div class="map-header">
+<h2>Mapa de Incêndios — Mato Grosso do Sul</h2>
+</div>
+
+<div class="map-frame">
+
+<svg id="map"></svg>
+
+<div id="tooltip" class="tooltip"></div>
+
+</div>
+
+<div class="legend">
+<span>Baixa intensidade</span>
+<div class="legend-gradient"></div>
+<span>Alta intensidade</span>
+</div>
+
+</section>
+
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+
+<script>
+
+const width = 900;
+const height = 700;
+
+const svg = d3
+  .select("#map")
+  .attr("viewBox", `0 0 ${width} ${height}`)
+  .attr("preserveAspectRatio", "xMidYMid meet");
+
+const projection = d3.geoMercator()
+  .center([-54.5, -20.5])
+  .scale(3500)
+  .translate([width / 2, height / 2]);
+
+const path = d3.geoPath().projection(projection);
+
+const mapLayer = svg.append("g");
+const fireLayer = svg.append("g");
+const upsLayer = svg.append("g");
+
+const ups = [
+
+{ name: "Campo Grande", lat: -20.4697, lon: -54.6201 },
+{ name: "Dourados", lat: -22.2211, lon: -54.8056 },
+{ name: "Três Lagoas", lat: -20.7849, lon: -51.7000 },
+{ name: "Corumbá", lat: -19.009, lon: -57.653 },
+{ name: "Ponta Porã", lat: -22.5361, lon: -55.725 },
+
+{ name: "Aquidauana", lat: -20.471, lon: -55.787 },
+{ name: "Naviraí", lat: -23.065, lon: -54.199 },
+{ name: "Nova Andradina", lat: -22.238, lon: -53.343 },
+{ name: "Paranaíba", lat: -19.675, lon: -51.190 },
+{ name: "Chapadão do Sul", lat: -18.790, lon: -52.626 },
+
+{ name: "Costa Rica", lat: -18.542, lon: -53.128 },
+{ name: "Coxim", lat: -18.503, lon: -54.760 },
+{ name: "Maracaju", lat: -21.614, lon: -55.167 },
+{ name: "Sidrolândia", lat: -20.931, lon: -54.969 },
+{ name: "Bonito", lat: -21.126, lon: -56.483 }
+
+];
+
+const firePoints = [];
+
+ups.forEach(up => {
+
+const incidents = Math.floor(Math.random() * 20) + 5;
+const multiplier = 6;
+
+for (let i = 0; i < incidents * multiplier; i++) {
+
+firePoints.push({
+lat: up.lat + (Math.random() - 0.5) * 0.6,
+lon: up.lon + (Math.random() - 0.5) * 0.6
+});
+
+}
+
+});
+
+d3.json("https://raw.githubusercontent.com/tbrugz/geodata-br/master/geojson/geojs-50-mun.json")
+.then(function (geo) {
+
+mapLayer
+.selectAll("path")
+.data(geo.features)
+.enter()
+.append("path")
+.attr("d", path)
+.attr("stroke", "#888")
+.attr("stroke-width", 0.4)
+.attr("fill", "#f5f5f5");
+
+const projectedPoints = firePoints.map(d => {
+const coords = projection([d.lon, d.lat]);
+return [coords[0], coords[1]];
+});
+
+const density = d3.contourDensity()
+.x(d => d[0])
+.y(d => d[1])
+.size([width, height])
+.bandwidth(12)(projectedPoints);
+
+const maxDensity = d3.max(density, d => d.value);
+
+const heatColor = d3.scaleSequential()
+.domain([0, maxDensity])
+.interpolator(d3.interpolateYlOrRd);
+
+fireLayer
+.selectAll("path")
+.data(density)
+.enter()
+.append("path")
+.attr("d", d3.geoPath())
+.attr("fill", d => heatColor(d.value))
+.attr("opacity", 0.65);
+
+const upsGroup = upsLayer
+.selectAll("g")
+.data(ups)
+.enter()
+.append("g")
+.attr("transform", d => {
+
+const coords = projection([d.lon, d.lat]);
+return `translate(${coords[0]}, ${coords[1]})`;
+
+});
+
+upsGroup.append("circle")
+.attr("r", 3.5)
+.attr("fill", "#444")
+.attr("stroke", "white")
+.attr("stroke-width", 1);
+
+upsGroup.append("text")
+.text(d => d.name)
+.attr("y", -10)
+.attr("text-anchor", "middle")
+.attr("font-size", "9px")
+.attr("fill", "#333");
+
+});
+
+</script>
+
+</body>
+</html>
