@@ -1,0 +1,1528 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bases Parceiro — Suzano</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js">
+// ── SIMULAÇÃO DE OCORRÊNCIA ──────────────────────────────────────────────────
+const VEL = { aviao: 250, helicoptero: 160, caminhao: 70 };
+const EMO = { aviao: '✈', helicoptero: '🚁', caminhao: '🚛' };
+const EMO_LABEL = { aviao: 'Avião', helicoptero: 'Helicóptero', caminhao: 'Caminhão' };
+const COR_RECURSO = { aviao: '#005a8e', helicoptero: '#c8372d', caminhao: '#e87722' };
+
+let simAtiva = false;
+let simTimers = [];
+let fireUPsAtivos = [];
+
+function haversineKm(lon1, lat1, lon2, lat2) {
+  const R = 6371, toR = Math.PI/180;
+  const dLat = (lat2-lat1)*toR, dLon = (lon2-lon1)*toR;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*toR)*Math.cos(lat2*toR)*Math.sin(dLon/2)**2;
+  return R * 2 * Math.asin(Math.sqrt(a));
+}
+
+function showNotif(titulo, sub, tipo='fire') {
+  const n = document.getElementById('notificacao');
+  n.className = 'notificacao ' + tipo;
+  n.querySelector('.notif-title').textContent = titulo;
+  n.querySelector('.notif-sub').textContent   = sub;
+  n.classList.add('visible');
+  setTimeout(() => n.classList.remove('visible'), 3500);
+}
+
+function atualizarPainel(dispatches) {
+  const panel = document.getElementById('ocorrencia-panel');
+  const content = document.getElementById('oc-content');
+  if (!dispatches || dispatches.length === 0) { panel.classList.remove('visible'); return; }
+  panel.classList.add('visible');
+  content.innerHTML = dispatches.map(d =>
+    `<div class="oc-row"><span>${EMO[d.tipo]} ${EMO_LABEL[d.tipo]}</span><span id="eta-${d.id}">ETA ${d.eta}min</span></div>`
+  ).join('') +
+  `<div class="oc-row" style="margin-top:6px"><span>UPs afetadas</span><span>${fireUPsAtivos.length}</span></div>`;
+}
+
+function iniciarSimulacao() {
+  simAtiva = true;
+  const btn = document.getElementById('btn-play');
+  btn.textContent = '■';
+  btn.classList.add('active');
+
+  showNotif('🔥 NOVA OCORRÊNCIA INICIADA', 'Incêndio detectado — despachando recursos');
+
+  // Selecionar 3-5 UPs aleatórias visíveis
+  const candidates = data.filter(d => activeNucleos.has(d.nucleo));
+  const shuffled = [...candidates].sort(() => Math.random() - 0.5);
+  fireUPsAtivos = shuffled.slice(0, 3 + Math.floor(Math.random() * 3));
+
+  // Grupo do fogo
+  const fireGrp = gMain.append('g').attr('class', 'fire-group');
+
+  fireUPsAtivos.forEach(up => {
+    const cx = xScale(up.lon), cy = yScale(up.lat);
+    const r  = rScale(up.area);
+
+    // Ondas de pulso em camadas
+    [0, 400, 800].forEach(delay => {
+      const ring = fireGrp.append('circle')
+        .attr('cx', cx).attr('cy', cy).attr('r', r + 2)
+        .attr('fill', 'none').attr('stroke', '#c8372d')
+        .attr('stroke-width', 1.5).attr('opacity', 0.9);
+      function pulsarRing() {
+        ring.interrupt();
+        ring.attr('r', r+2).attr('opacity', 0.9)
+          .transition().delay(delay % 400).duration(1000)
+          .attr('r', r + 22).attr('opacity', 0)
+          .on('end', () => { if(simAtiva) pulsarRing(); });
+      }
+      pulsarRing();
+    });
+
+    // Círculo vermelho sólido sobre a UP
+    fireGrp.append('circle')
+      .attr('class', 'fire-dot-' + up.up)
+      .attr('cx', cx).attr('cy', cy).attr('r', r)
+      .attr('fill', '#c8372d').attr('opacity', 0.92)
+      .attr('stroke', '#fff').attr('stroke-width', 1);
+
+    // Emoji fogo
+    fireGrp.append('text')
+      .attr('x', cx).attr('y', cy - r - 5)
+      .attr('text-anchor','middle').attr('font-size','13px')
+      .attr('pointer-events','none').text('🔥');
+  });
+
+  // Despachar recursos após 2s
+  const dispatchList = [];
+  let dispId = 0;
+
+  setTimeout(() => {
+    const dispGrp = gMain.append('g').attr('class', 'dispatch-group');
+
+    fireUPsAtivos.forEach((up, fi) => {
+      // Escolher base mais próxima com recurso disponível
+      const tipos = ['aviao','helicoptero','caminhao'];
+      const numR = 1 + (fi % 2); // 1 ou 2 recursos por UP
+
+      for (let ri = 0; ri < numR; ri++) {
+        const tipo = tipos[(fi + ri) % tipos.length];
+        const basesComTipo = basesData.filter(b => b[tipo] > 0);
+        if (!basesComTipo.length) continue;
+
+        // Base mais próxima
+        const base = basesComTipo.reduce((best, b) => {
+          const d = haversineKm(b.lon, b.lat, up.lon, up.lat);
+          return d < best.dist ? {b, dist:d} : best;
+        }, {b: basesComTipo[0], dist:Infinity}).b;
+
+        const distKm = haversineKm(base.lon, base.lat, up.lon, up.lat);
+        const etaMin = Math.max(1, Math.round(distKm / VEL[tipo] * 60));
+        const durMs  = 22000 + ri * 3000 + fi * 1500; // duração visual
+
+        const id = dispId++;
+        dispatchList.push({ id, tipo, eta: etaMin, base: base.up, alvo: up.up });
+        atualizarPainel(dispatchList);
+
+        animarRecurso(dispGrp, base, up, tipo, id, etaMin, durMs, dispatchList);
+      }
+    });
+  }, 2000);
+}
+
+function animarRecurso(grp, base, upAlvo, tipo, id, etaMin, durMs, dispList) {
+  const x1 = xScale(base.lon), y1 = yScale(base.lat);
+  const x2 = xScale(upAlvo.lon), y2 = yScale(upAlvo.lat);
+  const cor = COR_RECURSO[tipo];
+
+  // Linha tracejada (marching ants)
+  const linha = grp.append('line')
+    .attr('class', 'dispatch-line')
+    .attr('x1', x1).attr('y1', y1)
+    .attr('x2', x1).attr('y2', y1)   // começa no ponto de origem
+    .attr('stroke', cor)
+    .attr('stroke-width', 1.5)
+    .attr('stroke-dasharray', '6 6')
+    .attr('opacity', 0.7);
+
+  // Animar extensão da linha nos primeiros 20% do tempo
+  linha.transition().duration(durMs * 0.2)
+    .attr('x2', x2).attr('y2', y2);
+
+  // Grupo do ícone móvel
+  const iconGrp = grp.append('g').attr('class', 'recurso-mov').attr('opacity', 0);
+
+  // Emoji ícone
+  iconGrp.append('text')
+    .attr('text-anchor','middle').attr('dominant-baseline','middle')
+    .attr('font-size','16px').attr('y', 1).attr('filter','drop-shadow(0 1px 2px rgba(0,0,0,0.6))').text(EMO[tipo]);
+
+  // ETA label (acima)
+  const etaTxt = iconGrp.append('text')
+    .attr('id', 'moving-eta-' + id)
+    .attr('text-anchor','middle')
+    .attr('font-size','8px').attr('font-weight','700')
+    .attr('font-family','Inter,sans-serif')
+    .attr('fill', cor).attr('y', -18)
+    .text('ETA ' + etaMin + 'min');
+
+  // Velocidade (abaixo)
+  iconGrp.append('text')
+    .attr('text-anchor','middle')
+    .attr('font-size','8px').attr('font-family','Inter,sans-serif')
+    .attr('fill','rgba(255,255,255,0.7)').attr('y', 24)
+    .text(VEL[tipo] + ' km/h');
+
+  // Animar movimento com d3.timer
+  const startTime = performance.now();
+  iconGrp.transition().duration(300).attr('opacity', 1);
+
+  const timer = d3.timer(elapsed => {
+    const progress = Math.min(elapsed / durMs, 1);
+    const cx = x1 + (x2 - x1) * progress;
+    const cy = y1 + (y2 - y1) * progress;
+    iconGrp.attr('transform', `translate(${cx},${cy})`);
+
+    // Atualizar ETA no ícone e no painel
+    const etaAtual = Math.max(0, Math.round(etaMin * (1 - progress)));
+    etaTxt.text(etaAtual > 0 ? 'ETA ' + etaAtual + 'min' : 'Chegando...');
+    const panelEta = document.getElementById('eta-' + id);
+    if (panelEta) panelEta.textContent = etaAtual > 0 ? 'ETA ' + etaAtual + 'min' : '✓ Chegou';
+
+    if (progress >= 1) {
+      timer.stop();
+      // Flash verde na UP (extinto)
+      grp.selectAll('.fire-dot-' + upAlvo.up)
+        .transition().duration(200).attr('fill','#8dc63f')
+        .transition().delay(800).duration(400).attr('opacity',0).remove();
+      // Fade out dos elementos
+      iconGrp.transition().duration(600).attr('opacity',0).remove();
+      linha.transition().duration(600).attr('opacity',0).remove();
+
+      // Verificar se todos chegaram
+      const allDone = dispList.every(d => {
+        const el = document.getElementById('eta-' + d.id);
+        return !el || el.textContent === '✓ Chegou';
+      });
+      if (allDone) {
+        setTimeout(() => {
+          showNotif('✅ OCORRÊNCIA CONTROLADA', 'Todos os recursos chegaram ao destino', 'ok');
+          setTimeout(encerrarSimulacao, 3500);
+        }, 800);
+      }
+    }
+  });
+  simTimers.push(timer);
+}
+
+function encerrarSimulacao() {
+  simAtiva = false;
+  simTimers.forEach(t => t.stop());
+  simTimers = [];
+  fireUPsAtivos = [];
+
+  d3.selectAll('.fire-group').remove();
+  d3.selectAll('.dispatch-group').remove();
+
+  document.getElementById('ocorrencia-panel').classList.remove('visible');
+
+  const btn = document.getElementById('btn-play');
+  btn.textContent = '▶';
+  btn.classList.remove('active');
+}
+
+document.getElementById('btn-play').addEventListener('click', () => {
+  if (simAtiva) encerrarSimulacao();
+  else iniciarSimulacao();
+});
+
+</script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+  :root {
+    --bg: #f5f5f0;
+    --surface: #ffffff;
+    --border: #e0e0d8;
+    --text: #1a2a1a;
+    --muted: #7a8c7a;
+    --accent: #00573F;
+    --accent2: #8dc63f;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 24px;
+    background: var(--accent);
+    color: #fff;
+    flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(0,87,63,0.2);
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .brand-logo {
+    width: 36px;
+    height: 36px;
+    background: #fff;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--accent);
+    letter-spacing: -0.5px;
+    flex-shrink: 0;
+  }
+
+  .title-block h1 {
+    font-weight: 600;
+    font-size: 16px;
+    letter-spacing: 0.01em;
+    color: #fff;
+  }
+
+  .title-block p {
+    font-size: 11px;
+    color: rgba(255,255,255,0.65);
+    margin-top: 1px;
+  }
+
+  .stats {
+    display: flex;
+    gap: 28px;
+  }
+
+  .stat {
+    text-align: right;
+  }
+
+  .stat-val {
+    font-weight: 700;
+    font-size: 20px;
+    color: #8dc63f;
+    line-height: 1;
+  }
+
+  .stat-label {
+    font-size: 10px;
+    color: rgba(255,255,255,0.6);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-top: 2px;
+  }
+
+  .main {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+  }
+
+  .sidebar {
+    width: 210px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .sidebar-section {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sidebar-label {
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s;
+    font-size: 11px;
+    color: var(--text);
+  }
+
+  .legend-item:hover { background: var(--bg); }
+  .legend-item.dimmed { opacity: 0.3; }
+
+  .legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .legend-count {
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--muted);
+    font-weight: 500;
+  }
+
+  .filter-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 7px 10px;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.15s;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    width: 100%;
+    margin-bottom: 4px;
+  }
+
+  .filter-btn:hover, .filter-btn.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(0,87,63,0.06);
+  }
+
+  .map-area {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    background: #fafaf7;
+  }
+
+  svg { width: 100%; height: 100%; }
+
+  .dot {
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+
+  .dot:hover { opacity: 1 !important; }
+  .dot.hidden { opacity: 0 !important; pointer-events: none; }
+
+  .grid-line { stroke: #e8e8e0; stroke-width: 0.5; }
+  .axis-label { fill: #c0c0b0; font-size: 9px; font-family: 'Inter', sans-serif; }
+
+  .tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: #fff;
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    padding: 10px 14px;
+    min-width: 210px;
+    opacity: 0;
+    transition: opacity 0.12s;
+    box-shadow: 0 4px 16px rgba(0,87,63,0.12);
+  }
+
+  .tooltip.visible { opacity: 1; }
+
+  .tt-title {
+    font-weight: 600;
+    font-size: 12px;
+    color: var(--text);
+    margin-bottom: 3px;
+    line-height: 1.3;
+  }
+
+  .tt-up {
+    font-size: 10px;
+    color: var(--accent);
+    margin-bottom: 8px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+  }
+
+  .tt-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    font-size: 10px;
+    color: var(--muted);
+    line-height: 1.9;
+  }
+
+  .tt-row span:last-child { color: var(--text); font-weight: 500; }
+
+  .tt-transport {
+    display: flex;
+    gap: 5px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+  }
+
+  .tt-tag {
+    font-size: 9px;
+    padding: 2px 7px;
+    border: 1px solid;
+    border-radius: 3px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+  }
+
+  .zoom-controls {
+    position: absolute;
+    bottom: 16px;
+    right: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .zoom-btn {
+    width: 30px;
+    height: 30px;
+    background: #fff;
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.15s;
+    font-family: monospace;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  }
+
+  .zoom-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(0,87,63,0.04);
+  }
+
+  .info-bar {
+    position: absolute;
+    bottom: 16px;
+    left: 16px;
+    font-size: 10px;
+    color: var(--muted);
+    background: rgba(255,255,255,0.85);
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+
+  /* ── Notificação popup ── */
+  .notificacao {
+    position: absolute;
+    top: 18px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-30px);
+    background: #1a2a1a;
+    color: #fff;
+    padding: 14px 28px;
+    border-radius: 10px;
+    text-align: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.35s, transform 0.35s;
+    box-shadow: 0 6px 28px rgba(0,0,0,0.35);
+    z-index: 200;
+    min-width: 300px;
+    border-left: 5px solid #c8372d;
+  }
+  .notificacao.fire  { border-left-color: #c8372d; }
+  .notificacao.ok    { border-left-color: #8dc63f; background: #0d2010; }
+  .notificacao.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  .notif-title { font-weight: 700; font-size: 13px; letter-spacing: 0.06em; }
+  .notif-sub   { font-size: 11px; opacity: 0.75; margin-top: 4px; }
+
+  /* ── Botão Play ── */
+  .zoom-btn.play-btn {
+    background: #00573F;
+    border-color: #004830;
+    color: #fff;
+    font-size: 13px;
+  }
+  .zoom-btn.play-btn:hover { background: #007a50; }
+  .zoom-btn.play-btn.active {
+    background: #c8372d;
+    border-color: #a02020;
+    color: #fff;
+  }
+
+  /* ── Fire pulsing ring ── */
+  @keyframes fireRing {
+    0%   { r: 0px; opacity: 0.9; }
+    100% { r: 30px; opacity: 0; }
+  }
+  .fire-ring-anim { animation: fireRing 1.2s ease-out infinite; }
+
+  /* ── Marching ants nas linhas ── */
+  @keyframes marchAnts {
+    to { stroke-dashoffset: -24; }
+  }
+  .dispatch-line { animation: marchAnts 0.6s linear infinite; }
+
+  /* ── Painel lateral de ocorrência ── */
+  .ocorrencia-panel {
+    position: absolute;
+    top: 12px;
+    right: 56px;
+    background: #1a2a1a;
+    color: #fff;
+    border-radius: 8px;
+    padding: 12px 16px;
+    min-width: 200px;
+    font-size: 11px;
+    font-family: 'Inter', sans-serif;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    z-index: 150;
+    display: none;
+    border-left: 4px solid #c8372d;
+  }
+  .ocorrencia-panel.visible { display: block; }
+  .ocorrencia-panel h3 { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: #c8372d; margin-bottom: 8px; }
+  .oc-row { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.08); color: rgba(255,255,255,0.75); }
+  .oc-row span:last-child { color: #8dc63f; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="brand-logo">SZ</div>
+    <div class="title-block">
+      <h1>BASES PARCEIRO</h1>
+      <p>Distribuição Geográfica · Mato Grosso do Sul / São Paulo</p>
+    </div>
+  </div>
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-val" id="total-bases">—</div>
+      <div class="stat-label">Bases</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val" id="total-nucleos">—</div>
+      <div class="stat-label">Núcleos</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val" id="total-area">—</div>
+      <div class="stat-label">Área Total (ha)</div>
+    </div>
+  </div>
+</header>
+
+<div class="main">
+  <aside class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-label">Núcleo</div>
+      <div id="legend"></div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-label">Transporte · Bases</div>
+      <button class="filter-btn active" data-transport="all">✦ Todos</button>
+      <button class="filter-btn" data-transport="aviao">✈ Avião</button>
+      <button class="filter-btn" data-transport="caminhao">◎ Caminhão</button>
+      <button class="filter-btn" data-transport="helicoptero">⬡ Helicóptero</button>
+    </div>
+  </aside>
+
+  <div class="map-area" id="map-area">
+    <svg id="svg"></svg>
+    <div class="tooltip" id="tooltip"></div>
+    <div id="notificacao" class="notificacao fire">
+      <div class="notif-title"></div>
+      <div class="notif-sub"></div>
+    </div>
+    <div id="ocorrencia-panel" class="ocorrencia-panel">
+      <h3>🔥 OCORRÊNCIA ATIVA</h3>
+      <div id="oc-content"></div>
+    </div>
+    <div class="zoom-controls">
+      <button class="zoom-btn play-btn" id="btn-play" title="Iniciar simulação">▶</button>
+      <div style="height:6px"></div>
+      <button class="zoom-btn" id="zoom-in">+</button>
+      <button class="zoom-btn" id="zoom-reset">⊙</button>
+      <button class="zoom-btn" id="zoom-out">−</button>
+    </div>
+    <div class="info-bar">Scroll para zoom · Clique e arraste para mover</div>
+  </div>
+</div>
+
+<script>
+// ── DATA ────────────────────────────────────────────────────────────────────
+const rows = [
+["C1AA","SAGRADA FAMILIA",72.48,"CS1",-53.548,-20.347,0,0,0],
+["C1AB","CHACARA INVEJADO",191.56,"CS1",-53.698,-20.473,0,0,0],
+["C1AC","KLEBER",282.15,"CS1",-53.558,-20.344,0,0,0],
+["C1AD","ACAPU",345.25,"CS1",-53.763,-20.100,0,0,0],
+["C1AE","ESPINGARDA - MATEIRA",636.91,"CS1",-53.840,-20.347,0,1,0],
+["C1AF","BOM JARDIM",689.64,"CS1",-53.216,-20.398,0,0,0],
+["C1AG","ESPINGARDA II",902.92,"CS1",-53.531,-20.333,0,0,0],
+["C1AH","LEOPOLDINA",1751.97,"CS1",-53.677,-20.191,0,0,0],
+["C1AI","SANTA CLARA",2250.90,"CS1",-53.532,-20.175,0,0,0],
+["C1AJ","IPYTÁ",2321.86,"CS1",-53.720,-20.114,0,1,0],
+["C1AK","IPUÃ",2414.22,"CS1",-53.747,-20.135,0,0,0],
+["C1AL","SÃO MIGUEL",2442.61,"CS1",-53.688,-20.155,0,0,0],
+["C1AM","LCD",2574.16,"CS1",-53.675,-20.230,0,0,0],
+["C1AN","SÃO CARLOS",4088.48,"CS1",-53.630,-20.185,0,0,1],
+["C1AO","ESPINGARDA - MAMPEI",5293.21,"CS1",-53.655,-20.389,0,1,0],
+["C1AP","BOI PRETO",17460.58,"CS1",-53.567,-20.443,0,0,0],
+["C1AS","GUARANI",2756.21,"CS1",-53.573,-20.041,0,0,0],
+["C1AT","GRANOL MODELO I",2616.62,"CS1",-53.644,-20.057,0,0,0],
+["C1AU","RETIRO BELO HORIZONTE",1256.33,"CS1",-53.396,-20.166,0,0,0],
+["C1AV","AURORA",845.42,"CS1",-53.565,-20.279,0,1,0],
+["C1AW","RAINHA DA PAZ",2005.62,"CS1",-53.554,-20.312,0,0,0],
+["C1AX","LAGEADO",1148.75,"CS1",-53.521,-20.379,0,0,0],
+["C1AY","BOM PASTOR",125.88,"CS1",-53.543,-20.393,0,0,0],
+["C1AZ","LAGOA COMPRIDA",1075.25,"CS1",-53.224,-20.428,0,0,0],
+["C1BA","CAMPO LIMPO",1931.16,"CS1",-53.557,-20.167,0,1,0],
+["C1BB","CHACRINHAS BONANZA",48.18,"CS1",-53.699,-20.493,0,0,0],
+["C1BC","PENA ROJA",6471.69,"CS1",-53.651,-19.951,0,0,0],
+["C1BD","LALUVI",633.56,"CS1",-53.573,-20.009,0,0,0],
+["C1BG","ARARAS",1419.41,"CS1",-53.483,-20.148,0,0,0],
+["C1BH","BELA VISTA",1387.71,"CS1",-53.682,-20.104,0,1,0],
+["C1BI","SANTO ANTONIO",677.58,"CS1",-53.221,-20.383,0,0,0],
+["C1BJ","SAO PEDRO",777.17,"CS1",-53.169,-20.389,0,0,0],
+["C1BK","RECANTO PASSARA",136.59,"CS1",-53.706,-20.519,0,0,0],
+["C1BL","FORTUNA",735.61,"CS1",-53.703,-20.092,0,0,1],
+["C1BM","EMA",2606.85,"CS1",-52.804,-20.509,0,1,0],
+["C1BN","MAJOR VICENTE",1037.29,"CS1",-52.770,-20.458,0,0,0],
+["C1BO","ANA ROSA",1810.50,"CS1",-52.681,-20.143,0,0,0],
+["C1BP","FORMOSO",3287.91,"CS1",-53.077,-20.423,0,0,0],
+["C1BQ","SANTA CLARA F-H136",1537.28,"CS1",-52.984,-20.418,0,0,0],
+["C1BR","FORMOSA",21902.65,"CS1",-53.175,-20.187,0,1,0],
+["C1BV","VITÓRIA",353.55,"CS1",-53.594,-20.559,0,0,0],
+["C1CA","RANCHO FUNDO",1310.93,"CS1",-52.948,-20.445,0,0,0],
+["C1CB","SANTINA",1892.31,"CS1",-53.670,-20.074,0,0,0],
+["C1CC","SANTO ANTÔNIO",2209.17,"CS1",-53.816,-19.996,0,0,0],
+["C1CE","SÃO SEBASTIÃO",1492.06,"CS1",-53.426,-19.991,0,1,0],
+["C1CF","VÓ CECÍLIA",340.14,"CS1",-53.705,-20.062,0,0,0],
+["C1CG","OSWALDO CRUZ",1267.40,"CS1",-53.367,-19.991,0,0,0],
+["C1CH","RECANTO DOS PÁSSAROS",150.72,"CS1",-53.721,-20.528,0,0,0],
+["C1CI","CHAVE DE OURO",2824.99,"CS1",-53.500,-20.119,0,0,0],
+["C1CJ","SETE MARIAS",1944.85,"CS1",-53.732,-20.397,0,1,0],
+["C1CK","SANTO ANTONIO VI",1358.48,"CS1",-53.521,-20.525,1,0,0],
+["C1CL","SOL NASCENTE",850.51,"CS1",-53.599,-20.514,0,0,0],
+["C1CM","ONÇA PINTADA",4038.23,"CS1",-53.918,-19.745,0,0,0],
+["C1CN","SANTA LUCIA II",608.72,"CS1",-53.858,-20.163,0,0,1],
+["C1CO","NATIVA",425.28,"CS1",-53.846,-20.190,0,1,0],
+["C1CP","MONTANA",6472.47,"CS1",-53.528,-19.931,0,0,0],
+["C1CQ","VÓ MADALENA",230.95,"CS1",-52.750,-20.458,0,0,0],
+["C1CR","TRÊS MARRECAS",972.82,"CS1",-53.697,-20.263,0,0,0],
+["C1CS","TOCA DA ONÇA",435.66,"CS1",-53.819,-20.067,0,0,0],
+["C1CT","LIMÃO",1086.76,"CS1",-53.864,-19.865,0,1,0],
+["C1CU","RANCHO FUNDO III",405.11,"CS1",-53.432,-19.897,1,0,0],
+["C1CV","2R",84.02,"CS1",-53.510,-20.510,0,0,0],
+["C1CW","SANTA ROSA VI",841.28,"CS1",-53.547,-20.548,0,0,0],
+["C1CX","BARREIRO",1788.57,"CS1",-53.846,-19.893,0,0,0],
+["C1CY","ARROZ QUEIMADO",659.49,"CS1",-53.622,-20.030,0,1,0],
+["C1CZ","BURITI IV",1039.96,"CS1",-53.535,-20.261,0,0,0],
+["C1DA","LAGEADO II",957.84,"CS1",-53.247,-20.360,0,0,0],
+["C1DB","BONANZA",3649.17,"CS1",-53.422,-20.342,0,0,0],
+["C1DE","ALTO MANTENA",940.10,"CS1",-53.601,-20.376,0,1,0],
+["C1DG","MARACATU",2404.46,"CS1",-53.803,-20.106,1,0,0],
+["C1DH","LAJEADO II",2353.33,"CS1",-53.331,-20.149,0,0,0],
+["C1DI","SANTA REGINA",1469.58,"CS1",-53.766,-19.995,0,0,0],
+["C1DK","JAIC I",876.31,"CS1",-53.535,-19.997,0,0,0],
+["C1DL","SANTA MARIA X",1071.08,"CS1",-53.603,-19.965,0,1,0],
+["C1DM","SANTA MARTA",484.10,"CS1",-53.016,-20.770,0,0,0],
+["C1DN","SÃO JUDAS TADEU II",741.05,"CS1",-52.735,-20.463,0,0,0],
+["C1DO","CABECEIRA COMPRIDA",4746.24,"CS1",-53.393,-20.087,0,0,0],
+["C1DP","OLIVEIRA",1238.71,"CS1",-52.879,-20.150,0,1,0],
+["C1DQ","JACARÉ",774.77,"CS1",-52.854,-20.214,0,0,0],
+["C1DR","SÍTIO LILASES",77.35,"CS1",-53.730,-20.519,1,0,0],
+["C1DS","BARRA DO LOBO",1012.06,"CS1",-52.864,-20.523,0,0,0],
+["C1DT","VÓ NADIR",2252.98,"CS1",-53.384,-20.436,0,0,0],
+["C1DU","DOIS IRMÃOS II",502.07,"CS1",-53.792,-19.939,0,0,1],
+["C1DV","SANTA CLARA III",382.55,"CS1",-53.892,-20.229,0,1,0],
+["C1DW","LA AGUADA",2409.95,"CS1",-53.631,-19.673,0,0,0],
+["C1DX","TODOS OS SANTOS",2512.69,"CS1",-53.707,-19.810,0,0,0],
+["C1DY","BOA AGUADA",5457.20,"CS1",-53.259,-20.312,0,0,0],
+["C1EA","LARANJAL",828.56,"CS1",-53.080,-20.359,0,1,0],
+["C1EB","TUCANO",3774.95,"CS1",-53.550,-20.084,0,0,0],
+["C1ED","ARATACA",2469.99,"CS1",-53.984,-20.127,0,0,0],
+["C1EF","FLÓRIDA",1583.23,"CS1",-53.599,-20.015,0,1,0],
+["C1EH","LARANJAL II",1785.66,"CS1",-53.094,-20.383,0,0,0],
+["C1EI","SÃO JOÃO V",6506.93,"CS1",-53.378,-19.618,0,0,0],
+["C1EK","FUTURA GLEBA A",618.20,"CS1",-53.353,-20.060,0,1,0],
+["C1EL","ARARAS II",232.22,"CS1",-53.523,-20.052,0,0,0],
+["C1EM","SERENATA",1496.14,"CS1",-53.603,-19.804,0,0,0],
+["C1EN","SANTA ANA",1000.79,"CS1",-53.385,-19.932,0,0,0],
+["C1EO","CÓRREGO DO BRAÇO",2158.22,"CS1",-53.831,-19.732,0,0,1],
+["C1EP","SANTA ROSA DO ALEGRIA",755.24,"CS1",-53.832,-20.300,0,1,0],
+["C1EQ","TARUMÃ II",1287.27,"CS1",-53.578,-20.113,0,0,0],
+["C1ER","SABATACHE",3914.76,"CS1",-53.227,-20.101,0,0,0],
+["C1ES","LAGOA COMPRIDA II",922.98,"CS1",-53.207,-20.449,0,0,0],
+["C1ET","JATAÍ",678.47,"CS1",-53.132,-20.382,0,1,0],
+["C1EU","NELORE",2723.06,"CS1",-53.571,-20.143,0,1,0],
+["C1EZ","CLODASIL",6353.27,"CS1",-53.667,-19.827,0,1,0],
+["C1GC","RECREIO",3289.68,"CS1",-53.876,-20.255,0,0,0],
+["C1GF","ÁGUA VERDE",315.36,"CS1",-53.741,-20.293,0,1,0],
+["C1GG","TODOS OS SANTOS II",772.31,"CS1",-53.739,-19.839,0,0,0],
+["C1GJ","CÓRREGO DO BUGRE",1013.13,"CS1",-53.690,-20.367,0,0,1],
+["C1GM","GOAÇU",2970.57,"CS1",-53.345,-20.033,0,0,0],
+["C1GW","COQUEIRO",1454.99,"CS1",-53.620,-20.323,0,0,0],
+["C1GY","FAXINAL",4665.58,"CS1",-52.599,-20.170,0,0,0],
+["C1GZ","SANTO ONOFRE",1055.27,"CS1",-53.416,-20.180,0,1,0],
+["C1JF","GUARANI II",2312.29,"CS1",-52.871,-20.183,0,1,0],
+["C1JG","EUROPA",3329.47,"CS1",-53.945,-20.137,0,1,0],
+["C1JI","UNIÃO II",4702.75,"CS1",-52.758,-20.528,0,0,0],
+["C1JK","CABECEIRA FUNDA",2168.51,"CS1",-53.454,-20.148,0,0,0],
+["C1JM","ITACURU",2654.13,"CS1",-53.966,-20.063,0,1,0],
+["C1JN","VERDE MAR II",9604.57,"CS1",-53.440,-20.047,1,0,0],
+["C1JP","ITAPORÃ",4845.60,"CS1",-53.917,-20.068,0,0,0],
+["C1JQ","SANTO ANTÔNIO DO MONTE ALEGRE",3490.48,"CS1",-52.539,-20.174,0,0,0],
+["C1JR","VERDE MAR",7790.04,"CS1",-52.833,-20.150,0,0,1],
+["C1JV","NOSSA SENHORA DE FÁTIMA II",1301.13,"CS1",-53.683,-19.977,0,0,0],
+["C1JY","CAR30",1498.71,"CS1",-53.984,-20.175,0,1,0],
+["C1KD","BOM JESUS DO RIO PARDO",1495.47,"CS1",-53.812,-20.330,0,1,0],
+["C2AA","INEC II",810.61,"CS2",-53.822,-20.658,0,0,0],
+["C2AB","DOIS MARTELOS",1595.10,"CS2",-53.791,-20.581,0,0,0],
+["C2AC","FSW",2462.23,"CS2",-53.730,-20.644,0,1,0],
+["C2CD","ANDRAMIL I",427.22,"CS2",-53.764,-20.611,0,1,0],
+["C2CE","ANDRAMIL II",2278.72,"CS2",-53.810,-20.620,1,0,0],
+["C2CF","CASSUNUNGA",9819.78,"CS2",-53.894,-20.556,0,0,0],
+["C2CH","NOVA DA MATA",6474.24,"CS2",-53.859,-20.469,0,0,0],
+["C2CJ","SANTA LUZIA",2638.71,"CS2",-53.432,-20.676,0,0,1],
+["C2CK","PONTE ALTA",10478.36,"CS2",-53.964,-20.900,0,1,0],
+["C2CL","MUTUM",50744.03,"CS2",-53.119,-20.532,0,0,0],
+["C2CM","NOSSA SENHORA APARECIDA",2588.26,"CS2",-53.497,-20.679,0,0,0],
+["C2CN","BURITI",3669.25,"CS2",-54.017,-20.545,0,0,0],
+["C2CO","PARAÍSO",606.18,"CS2",-53.690,-20.587,0,0,0],
+["C2CP","DA MATA",3485.89,"CS2",-53.893,-20.505,0,1,0],
+["C2CQ","SÃO GUILHERME",18090.27,"CS2",-53.463,-20.573,0,0,0],
+["C2CR","NOVA DO MIMOSO",833.48,"CS2",-53.433,-20.722,0,0,0],
+["C2CS","SACRAMENTO",3144.24,"CS2",-53.317,-20.693,0,0,0],
+["C2CT","LAGOA BONITA",1474.30,"CS2",-53.993,-20.580,0,0,0],
+["C2CU","SAVANA",1412.79,"CS2",-53.767,-21.337,0,0,0],
+["C2CV","CASA GRANDE",1122.43,"CS2",-53.924,-21.212,0,0,0],
+["C2CW","ITAMOARA",4190.25,"CS2",-53.867,-21.217,0,0,0],
+["C2CX","NHU VERA",2696.43,"CS2",-53.818,-21.218,0,0,0],
+["C2CY","VARJÃO DO LONTRA",1258.71,"CS2",-53.720,-21.158,0,0,0],
+["C2DA","CARACU",971.46,"CS2",-53.469,-20.508,0,0,0],
+["C2DB","NOVA DOS MORROS",1065.79,"CS2",-54.105,-20.671,0,0,0],
+["C2DC","ESTRELA",3926.52,"CS2",-53.849,-21.081,0,0,0],
+["C2DD","SAO JOSE VI",1552.08,"CS2",-53.396,-20.732,0,0,1],
+["C2DI","MANOEL PIRES",2650.46,"CS2",-53.276,-20.417,0,0,0],
+["C2DL","SAO DONATO",2370.64,"CS2",-53.467,-21.181,0,0,0],
+["C2DM","MIMOSO - GLEBA C",3100.04,"CS2",-53.612,-20.813,0,0,0],
+["C2DN","SAO RAFAEL",785.22,"CS2",-53.518,-20.847,0,1,0],
+["C2DO","SANTO ANTONIO III",1563.27,"CS2",-53.464,-21.210,0,0,0],
+["C2DP","SÃO JOSÉ FABER",730.45,"CS2",-53.775,-20.560,0,0,0],
+["C2DQ","SÃO JOSÉ MARCOS",991.44,"CS2",-53.806,-20.548,0,0,0],
+["C2DR","SANTA MARIA VII",1502.38,"CS2",-53.803,-20.535,0,0,0],
+["C2DS","SANTA MARIA VIII",1299.86,"CS2",-53.762,-20.534,0,1,0],
+["C2DT","LAGOINHA",387.69,"CS2",-53.425,-20.782,0,0,0],
+["C2DU","SANTA FÉ",783.35,"CS2",-53.673,-21.055,0,0,0],
+["C2DV","BELA VISTA I",1919.67,"CS2",-53.406,-20.761,0,0,0],
+["C2DX","C.R.A II",1250.50,"CS2",-53.990,-20.668,0,1,0],
+["C2DY","SANTA TEREZA",1371.70,"CS2",-53.797,-21.090,0,0,0],
+["C2DZ","PARAÍSO DO CÉU",1203.23,"CS2",-53.443,-20.789,0,0,0],
+["C2EA","RANCHO FUNDO II",1393.20,"CS2",-54.072,-20.604,0,0,0],
+["C2EB","OURO VERDE II",1585.13,"CS2",-53.389,-20.708,0,0,0],
+["C2ED","FORTALEZA",1866.22,"CS2",-53.465,-20.828,0,1,0],
+["C2EE","IMPERADOR",519.10,"CS2",-54.226,-20.494,0,0,0],
+["C2EF","MILAGRE DE JESUS",2203.72,"CS2",-53.201,-20.555,0,0,0],
+["C2EG","ONÇA PARDA",5387.10,"CS2",-53.851,-20.758,0,0,0],
+["C2EH","COLINA II",6687.74,"CS2",-53.221,-20.705,0,0,0],
+["C2EJ","VO MATHEUS",1589.82,"CS2",-53.837,-20.880,0,0,0],
+["C2EK","MODELO",6976.87,"CS2",-53.101,-20.867,0,1,0],
+["C2EQ","JAIC III",1164.69,"CS2",-53.496,-20.784,0,1,0],
+["C2ES","SÃO FÉLIX",2504.30,"CS2",-53.731,-20.607,0,0,0],
+["C2EU","COPACABANA",1134.59,"CS2",-53.752,-20.814,0,0,0],
+["C2EW","ASA BRANCA",719.32,"CS2",-53.148,-20.825,1,0,0],
+["C2GA","NOVA QUERÊNCIA",907.18,"CS2",-53.949,-20.627,0,0,0],
+["C2GD","SANTO ANTONIO VII",1198.94,"CS2",-53.500,-21.245,0,0,0],
+["C2GE","PALANQUE",2482.82,"CS2",-54.043,-20.929,0,0,0],
+["C2GF","SÃO CARLOS II",761.80,"CS2",-53.834,-20.610,0,1,0],
+["C2GG","FAVEIRO",1198.28,"CS2",-53.351,-20.729,1,0,0],
+["C2GH","GARIMPO",1706.70,"CS2",-53.776,-20.821,0,0,0],
+["C2GL","PORTO ALEGRE",6252.99,"CS2",-54.063,-20.520,0,0,0],
+["C2GQ","GARIMPO II",1670.99,"CS2",-53.805,-20.805,0,1,0],
+["C2GR","RECÔNCAVO",1105.26,"CS2",-53.900,-20.668,1,0,0],
+["C2GS","SÃO FÉLIX II",872.60,"CS2",-53.974,-20.647,0,1,0],
+["C2HA","SÃO MANOEL",7287.42,"CS2",-53.199,-20.771,0,2,0],
+["C2HB","SANTA MARIA XI",2038.11,"CS2",-53.796,-20.499,0,2,0],
+["C2HD","QUATRO IRMÃOS II",8249.63,"CS2",-53.974,-20.815,0,1,0],
+["C2HF","SÃO FÉLIX III",1528.30,"CS2",-53.910,-20.617,0,2,1],
+["C2HO","SANTA RITA",998.59,"CS2",-53.877,-20.839,0,1,0],
+["C2HP","PANTANO",18977.99,"CS2",-53.803,-20.972,0,2,0],
+["C2HZ","FÊNIX",1746.93,"CS2",-53.595,-20.889,0,1,0],
+["C3AA","SANTA MONICA",1491.97,"CS3",-54.004,-20.298,0,1,0],
+["C3AB","MOYA",193.78,"CS3",-54.295,-20.246,0,1,0],
+["C3AC","RETIRO DA CACHOEIRINHA",1293.86,"CS3",-54.114,-20.278,0,1,0],
+["C3AD","CAMPO VERDE",703.76,"CS3",-54.120,-20.361,0,1,0],
+["C3AE","HARMONIA",1059.76,"CS3",-54.273,-20.326,0,0,0],
+["C3AF","PERDIZES II",531.28,"CS3",-54.161,-20.420,0,1,0],
+["C3AG","ALEGRIA",1878.06,"CS3",-54.092,-20.241,0,1,0],
+["T1A0","BARRA DO MOEDA",5399.87,"MS1",-51.801,-21.015,0,2,0],
+["T1A2","SOBERANO",848.32,"MS1",-52.043,-21.010,0,1,0],
+["T1A3","BURITI III",994.52,"MS1",-51.922,-21.003,0,1,0],
+["T1A4","SÃO MIGUEL",643.44,"MS1",-51.978,-21.001,0,1,1],
+["T1A5","RIO VERDE - TAQUARUSSU",294.53,"MS1",-51.967,-20.995,0,2,0],
+["T1A6","JUSSARA",768.75,"MS1",-52.005,-20.994,0,0,0],
+["T1A7","SÃO BENTO",593.40,"MS1",-52.036,-20.986,0,1,0],
+["T1A9","ITUANA",643.24,"MS1",-51.888,-20.989,0,1,0],
+["T1AA","FAVEIRO DO RIO VERDE I",651.19,"MS1",-51.960,-21.129,0,1,0],
+["T1AC","CABECEIRAS",260.91,"MS1",-51.949,-21.107,0,1,0],
+["T1AD","FAVEIRO II",552.19,"MS1",-51.929,-21.100,0,1,0],
+["T1AE","MALU DO RIO VERDE",1496.27,"MS1",-51.989,-21.098,0,2,0],
+["T1AF","SANTA LUZIA",3685.88,"MS1",-51.892,-21.088,0,2,0],
+["T1AI","AGUA LIMPA III",4349.43,"MS1",-51.850,-21.077,0,1,0],
+["T1AJ","NOSSA SENHORA DE LOURDES",963.39,"MS1",-51.982,-21.072,0,2,0],
+["T1AM","NASCENTE DO CARACOL",626.79,"MS1",-51.989,-21.052,0,1,0],
+["T1AN","SÃO JOÃO BATISTA",554.75,"MS1",-51.907,-21.049,0,1,0],
+["T1AO","JUINAUBIRA",774.36,"MS1",-52.004,-21.044,0,1,1],
+["T1AR","OURO VERDE",555.03,"MS1",-51.965,-21.029,0,1,0],
+["T1AU","ALMEIDA",931.56,"MS1",-52.026,-21.029,0,1,0],
+["T1AY","LIMOEIRO",1144.45,"MS1",-52.121,-21.020,0,1,0],
+["T1B2","PALMITO",2057.13,"MS1",-51.779,-20.925,0,1,0],
+["T1B3","BURITI",4035.50,"MS1",-51.853,-20.912,0,1,0],
+["T1B4","TARUMÂ",1796.33,"MS1",-51.735,-20.904,0,1,0],
+["T1B5","ESTRADÃO",6018.86,"MS1",-51.931,-20.942,0,2,0],
+["T1BK","DOBRÃO",2628.04,"MS1",-51.773,-20.962,0,2,0],
+["T1BO","MORADA DO SOL",1148.13,"MS1",-52.053,-20.955,0,1,0],
+["T1CA","SANTA ANGELA",2921.20,"MS1",-51.794,-20.880,0,2,0],
+["T1CC","SANTA ÂNGELA II",882.73,"MS1",-51.757,-20.870,0,1,0],
+["T1CG","PALMITO MIURA",2470.46,"MS1",-51.929,-20.838,0,0,0],
+["T1CK","BRINCO DE OURO",495.93,"MS1",-51.949,-20.802,0,2,0],
+["T1DF","MATEBERI",1335.78,"MS1",-51.821,-21.024,0,1,0],
+["T2A5","BOA ESPERANÇA II",8500.90,"MS2",-52.323,-21.279,0,1,0],
+["T2A8","ATLÂNTIDA",2429.73,"MS2",-52.226,-21.259,0,0,0],
+["T2A9","MONTE ALTO",2792.65,"MS2",-52.759,-21.237,0,1,0],
+["T2AA","FIGUEIRA",866.30,"MS2",-52.581,-21.741,0,1,0],
+["T2AB","SAO JOSE VI",3773.36,"MS2",-52.673,-21.706,0,2,0],
+["T2AD","SAO JOSE V",2510.99,"MS2",-52.703,-21.660,0,0,0],
+["T2AE","CONQUISTA II",929.61,"MS2",-52.368,-21.639,0,1,0],
+["T2AG","SANTA ROSA IV",10318.59,"MS2",-52.198,-21.404,0,2,1],
+["T2AI","BARRA DO CEDRO",2831.27,"MS2",-52.081,-21.402,0,2,0],
+["T2AJ","CANAVIEIRA",3016.74,"MS2",-52.347,-21.394,0,0,0],
+["T2AK","SANTA LUZIA IV",1368.43,"MS2",-52.115,-21.383,0,1,0],
+["T2AL","SÃO JOÃO IV",1198.58,"MS2",-52.752,-21.375,0,1,0],
+["T2AM","MIRACEMA",1673.83,"MS2",-52.302,-21.372,0,1,0],
+["T2AO","SANTA ROSA III",2734.38,"MS2",-52.293,-21.350,0,2,0],
+["T2AP","ANTARES",11640.18,"MS2",-52.406,-21.347,1,0,0],
+["T2AR","SANTA ROSA II",2002.77,"MS2",-52.139,-21.343,0,1,0],
+["T2AU","CAMPO LIMPO",5489.41,"MS2",-52.211,-21.322,0,2,0],
+["T2BA","BRASILÂNDIA",676.94,"MS2",-52.097,-21.232,1,0,0],
+["T2BB","COQUEIRINHO",1293.67,"MS2",-52.188,-21.232,0,1,0],
+["T2BN","SANTO ANTONIO",488.10,"MS2",-52.023,-21.134,0,2,1],
+["T2BO","SAO DOMINGOS",2069.67,"MS2",-52.086,-21.118,0,2,0],
+["T2BQ","SANTA LUZIA VI",3141.79,"MS2",-52.703,-21.519,0,1,0],
+["T2BR","SANTA MARIA IX",2279.25,"MS2",-52.582,-21.447,0,1,0],
+["T2BS","POUSO ALTO I",1572.65,"MS2",-52.710,-21.389,0,1,0],
+["T2BT","SANTA LUZIA VII",3951.16,"MS2",-52.687,-21.454,0,2,0],
+["T2BU","TRÊS IRMÃOS",4697.31,"MS2",-52.647,-21.581,1,0,0],
+["T2BY","SÃO JOSÉ VII",3838.65,"MS2",-52.269,-21.300,0,2,0],
+["T3AA","PARANOÁ",1987.78,"MS3",-51.734,-20.647,0,0,0],
+["T3AE","PONTAL",1132.22,"MS3",-51.702,-20.602,0,1,0],
+["T3AF","PONTEIO",1312.56,"MS3",-51.734,-20.542,0,2,0],
+["T3AH","SANTO ANTONIO V",829.88,"MS3",-51.812,-20.518,0,1,0],
+["T3AI","SANTA CLARA II",1597.32,"MS3",-51.608,-20.487,0,1,0],
+["T3AJ","MATÃO",16832.80,"MS3",-51.805,-20.416,0,2,1],
+["T3AM","PARQUE FLORESTAL ERVA VIII",2670.69,"MS3",-51.692,-20.393,0,2,0],
+["T3AO","ESMERALDA",848.94,"MS3",-51.889,-20.382,0,1,0],
+["T3AP","SANTA CRISTINA",1076.57,"MS3",-51.936,-20.370,0,1,0],
+["T3AQ","SANTA MÔNICA",1108.88,"MS3",-51.924,-20.350,0,1,0],
+["T3AR","FANTASIA",1986.78,"MS3",-51.698,-20.347,0,2,0],
+["T3AT","SANTA MARIA III",1022.35,"MS3",-51.913,-20.326,0,1,0],
+["T3AV","YACIMA",2177.93,"MS3",-51.771,-20.260,0,1,0],
+["T3AX","ESTRELA",2210.63,"MS3",-51.746,-20.004,0,0,0],
+["T3AY","JOAMAR",1702.10,"MS3",-51.781,-19.988,0,1,0],
+["T3BE","ESTRELA E SANTO EXPEDITO",1865.12,"MS3",-51.671,-19.971,0,1,0],
+["T3BG","UNIÃO SÃO PEDRO",9507.69,"MS3",-52.306,-19.473,0,1,1],
+["T3BH","CONQUISTA E NOVA CONQUISTA",2625.06,"MS3",-51.845,-19.951,0,2,0],
+["T3BI","NOSSA SENHORA",2902.96,"MS3",-52.080,-19.483,0,0,0],
+["T3BJ","RIO MANSO",1882.46,"MS3",-52.174,-19.261,0,1,0],
+["T3BK","CARVALHO",1227.86,"MS3",-52.112,-19.336,0,1,0],
+["T3BL","TRÊS MARIAS II",2996.74,"MS3",-52.148,-19.295,0,2,0],
+["T3BM","JIII",1947.88,"MS3",-52.031,-19.255,0,2,0],
+["T3BO","V-11",1707.97,"MS3",-51.963,-19.120,0,1,0],
+["T3BR","SANTA HELENA II",3417.63,"MS3",-51.989,-19.145,0,2,0],
+["T4AA","PILARES II",1337.84,"MS4",-52.286,-20.942,0,1,0],
+["T4AB","PILARES III",726.25,"MS4",-52.305,-20.930,0,2,0],
+["T4AD","RIO VERDE A",19452.59,"MS4",-52.233,-20.921,0,1,0],
+["T4AG","NOVA ESPERANÇA",1103.46,"MS4",-52.074,-20.906,0,1,0],
+["T4AH","NOVOS TEMPOS",1107.65,"MS4",-52.185,-20.880,0,2,0],
+["T4AI","BURITI ALEGRE",895.82,"MS4",-52.067,-20.863,0,2,0],
+["T4AK","MILLENIUM",4431.48,"MS4",-52.300,-20.861,0,1,0],
+["T4AL","SÃO MARCOS",5970.20,"MS4",-52.399,-20.835,0,1,0],
+["T4AN","SANTA MATHILDE",449.10,"MS4",-52.239,-20.800,0,2,0],
+["T4AP","VIÇOSA",931.72,"MS4",-52.167,-20.790,0,1,0],
+["T4AR","COLORADO II",967.61,"MS4",-52.400,-20.776,0,1,1],
+["T4AS","TRÊS MARIAS",863.81,"MS4",-52.209,-20.762,0,2,0],
+["T4AU","TALISMÃ DO SUL II",556.68,"MS4",-52.265,-20.731,0,1,0],
+["T4AV","TALISMÃ DO SUL",726.14,"MS4",-52.310,-20.715,0,1,0],
+["T4AX","COLORADO III",1511.52,"MS4",-52.391,-20.798,0,2,0],
+["T4AZ","BOA VISTA I",2415.88,"MS4",-52.267,-20.698,1,0,0],
+["T4BG","TUPAHUÊ",2638.48,"MS4",-52.124,-20.820,0,1,0],
+["T4BH","TUPAHUÊ II",1226.08,"MS4",-52.317,-20.783,0,1,0],
+["T5AA","VERTENTE",2826.28,"MS5",-52.528,-20.634,1,0,0],
+["T5AB","ARIRANHA",2088.91,"MS5",-52.488,-20.619,0,1,0],
+["T5AC","SÃO JOSE DO ESPIGÃO",1522.62,"MS5",-52.657,-20.563,0,1,0],
+["T5AE","JO PORA",345.73,"MS5",-52.663,-20.515,0,2,0],
+["T5AJ","SANTA MARIA V",778.93,"MS5",-52.667,-20.484,0,2,0],
+["T5AL","COLORADO",1851.97,"MS5",-52.652,-20.436,0,2,0],
+["T5AM","SANTA INES GLEBA C",1981.27,"MS5",-52.603,-20.299,1,0,0],
+["T5AN","SANTA INES",1017.67,"MS5",-52.570,-20.269,0,1,0],
+["T5AR","3PA",1294.85,"MS5",-52.851,-20.412,0,2,0],
+["T5AX","SANTA RITA DE CÁSSIA II",1856.17,"MS5",-52.391,-19.555,0,2,0],
+["T5AZ","NOVO ORIENTE",1190.28,"MS5",-52.810,-20.366,0,1,0],
+["T5BB","ITATIAIA",1118.27,"MS5",-52.259,-20.233,0,1,1],
+["T5BF","ALVORADA DO POMBO",1692.46,"MS5",-52.524,-20.511,0,1,0],
+["T5BH","BARRA DO BURITI",964.43,"MS5",-52.631,-20.008,0,1,0],
+["T6AA","GRANADA",4629.51,"MS6",-51.915,-20.891,0,2,0],
+["T6AB","RODEIO",8289.47,"MS6",-51.821,-20.847,0,0,0],
+["T6AI","ÁGUA LIMPA",4133.88,"MS6",-52.550,-20.746,0,1,0],
+["T6AP","ABASTO",6286.12,"MS6",-52.454,-20.713,0,2,0],
+["T6AT","CURUCACA",4941.18,"MS6",-52.131,-20.707,0,1,0],
+["T6AX","SANTA ADELIA",1821.44,"MS6",-52.039,-20.690,0,1,0],
+["T6B7","PERDIZES",2192.45,"MS6",-52.404,-20.413,0,1,0],
+["T6BZ","VISTA ALEGRE",5762.67,"MS6",-52.240,-20.472,0,2,0],
+["T6CD","SANTA LUCIA",2167.77,"MS6",-51.807,-20.675,0,1,0],
+["T6CI","PINDORAMA",6764.74,"MS6",-52.160,-20.541,0,1,0],
+["T7AJ","ESTÂNCIA PAULÃO",241.42,"MS7",-52.909,-20.360,0,1,0],
+["T7AK","SOLON",710.28,"MS7",-52.957,-20.310,0,1,0],
+["T7AL","SANTA MARINA II",587.16,"MS7",-52.938,-20.297,0,1,1],
+["T7AM","SANTA TEREZINHA III",1123.34,"MS7",-52.989,-20.274,0,2,0],
+["T8AJ","BRASILEIRA",12125.60,"MS8",-52.211,-21.014,0,2,0],
+["T8AL","VALE DO GERIVÁ",2114.30,"MS8",-52.318,-21.027,1,0,0],
+["T8AM","DUAS MARIAS",17853.53,"MS8",-52.380,-21.026,0,1,0],
+["T8AQ","BOM JESUS",1415.41,"MS8",-52.295,-20.999,0,1,1],
+["T8AT","RIO VERDE B",17628.03,"MS8",-52.445,-20.898,0,1,0],
+["T8BB","JATIUCA",3941.33,"MS8",-52.313,-21.190,0,2,0],
+["T8BC","VALE DOURADO II",854.86,"MS8",-52.443,-21.171,0,2,0],
+["T8BF","PANTERA",1394.14,"MS8",-52.653,-20.876,0,1,0],
+["T8BH","JUNIOR E SANTA MARIA",2085.70,"MS8",-52.577,-20.786,0,2,0],
+["T8BI","TROPICAL",3324.16,"MS8",-52.522,-20.963,1,0,0],
+["T8BM","PASSO FUNDO",927.14,"MS8",-52.849,-20.806,0,2,0],
+["T8BX","LÍRIO DO VALE",4769.20,"MS8",-52.935,-20.789,0,0,0]
+];
+
+const data = rows.map(r => ({
+  up: r[0], name: r[1], area: r[2],
+  nucleo: r[3], lon: r[4], lat: r[5],
+  aviao: r[6], caminhao: r[7], helicoptero: r[8]
+}));
+
+// Suzano color palette for nucleos
+const nucleos = [...new Set(data.map(d => d.nucleo))].sort();
+const suzanoPalette = [
+  '#00573F', // Suzano dark green
+  '#8dc63f', // Suzano light green
+  '#005a8e', // deep blue
+  '#e87722', // orange
+  '#b5bd00', // yellow-green
+  '#007a6e', // teal
+  '#c8372d', // red
+  '#6d2077', // purple
+  '#00a0af', // cyan
+  '#f0a500', // amber
+  '#3a5f0b', // forest
+];
+const colorMap = {};
+nucleos.forEach((n, i) => colorMap[n] = suzanoPalette[i % suzanoPalette.length]);
+
+// Stats
+document.getElementById('total-bases').textContent = data.length;
+document.getElementById('total-nucleos').textContent = nucleos.length;
+const totalArea = data.reduce((s, d) => s + d.area, 0);
+document.getElementById('total-area').textContent = (totalArea/1000).toFixed(0)+'k';
+
+// Legend
+const legend = document.getElementById('legend');
+const nucCounts = {};
+data.forEach(d => nucCounts[d.nucleo] = (nucCounts[d.nucleo]||0)+1);
+let activeNucleos = new Set(nucleos);
+
+nucleos.forEach(n => {
+  const item = document.createElement('div');
+  item.className = 'legend-item';
+  item.innerHTML = `<span class="legend-dot" style="background:${colorMap[n]}"></span>${n}<span class="legend-count">${nucCounts[n]}</span>`;
+  item.addEventListener('click', () => {
+    if (activeNucleos.has(n)) {
+      if (activeNucleos.size === 1) {
+        activeNucleos = new Set(nucleos);
+        document.querySelectorAll('.legend-item').forEach(i => i.classList.remove('dimmed'));
+      } else {
+        activeNucleos.delete(n);
+        item.classList.add('dimmed');
+      }
+    } else {
+      activeNucleos.add(n);
+      item.classList.remove('dimmed');
+    }
+    updateVisibility();
+  });
+  legend.appendChild(item);
+});
+
+// Transport filter — agora filtra as BASES de rastreio
+let activeTransport = 'all';
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeTransport = btn.dataset.transport;
+    updateVisibility();
+  });
+});
+
+function updateVisibility() {
+  // UPs: visibilidade controlada apenas pelo nucleo
+  d3.selectAll('.dot').each(function(d) {
+    const nucOk = activeNucleos.has(d.nucleo);
+    d3.select(this).classed('hidden', !nucOk);
+  });
+  // Bases: visibilidade controlada pelo filtro de transporte
+  d3.selectAll('.base-marker').each(function(d) {
+    const transOk = activeTransport === 'all' || d[activeTransport] > 0;
+    d3.select(this).classed('hidden', !transOk);
+  });
+}
+
+// SVG
+const mapArea = document.getElementById('map-area');
+const svg = d3.select('#svg');
+const tooltip = document.getElementById('tooltip');
+
+const W = mapArea.clientWidth;
+const H = mapArea.clientHeight;
+
+const lonExt = d3.extent(data, d => d.lon);
+const latExt = d3.extent(data, d => d.lat);
+const pad = 50;
+
+const xScale = d3.scaleLinear().domain(lonExt).range([pad, W - pad]);
+const yScale = d3.scaleLinear().domain(latExt).range([H - pad, pad]);
+const rScale = d3.scaleSqrt().domain(d3.extent(data, d => d.area)).range([3.5, 15]);
+
+// Grid
+const gGrid = svg.append('g');
+const lons = d3.range(Math.ceil(lonExt[0]*2)/2, lonExt[1], 0.5);
+const lats = d3.range(Math.ceil(latExt[0]*2)/2, latExt[1], 0.5);
+
+lons.forEach(lo => {
+  gGrid.append('line').attr('class','grid-line')
+    .attr('x1', xScale(lo)).attr('x2', xScale(lo))
+    .attr('y1', pad).attr('y2', H - pad);
+  gGrid.append('text').attr('class','axis-label')
+    .attr('x', xScale(lo)).attr('y', H - pad + 12)
+    .attr('text-anchor','middle')
+    .text(Math.abs(lo).toFixed(1)+'°W');
+});
+lats.forEach(la => {
+  gGrid.append('line').attr('class','grid-line')
+    .attr('y1', yScale(la)).attr('y2', yScale(la))
+    .attr('x1', pad).attr('x2', W - pad);
+  gGrid.append('text').attr('class','axis-label')
+    .attr('x', pad - 4).attr('y', yScale(la) + 3)
+    .attr('text-anchor','end')
+    .text(Math.abs(la).toFixed(1)+'°S');
+});
+
+// Zoom
+const gMain = svg.append('g');
+const zoom = d3.zoom().scaleExtent([0.4, 25]).on('zoom', evt => {
+  gMain.attr('transform', evt.transform);
+  gGrid.attr('transform', evt.transform);
+  // Labels das bases: só visíveis com zoom > 3
+  const k = evt.transform.k;
+  d3.selectAll('.base-label').attr('opacity', k > 3 ? 1 : 0);
+});
+svg.call(zoom);
+
+document.getElementById('zoom-in').onclick  = () => svg.transition().duration(300).call(zoom.scaleBy, 1.5);
+document.getElementById('zoom-out').onclick = () => svg.transition().duration(300).call(zoom.scaleBy, 0.67);
+document.getElementById('zoom-reset').onclick = () => svg.transition().duration(400).call(zoom.transform, d3.zoomIdentity);
+
+// Dots
+const dots = gMain.selectAll('.dot')
+  .data(data).enter().append('circle')
+  .attr('class', 'dot')
+  .attr('cx', d => xScale(d.lon))
+  .attr('cy', d => yScale(d.lat))
+  .attr('r',  d => rScale(d.area))
+  .attr('fill', d => colorMap[d.nucleo])
+  .attr('opacity', 0.8)
+  .attr('stroke', '#fff')
+  .attr('stroke-width', 1);
+
+// Tooltip
+dots.on('mousemove', function(event, d) {
+    const rect = mapArea.getBoundingClientRect();
+    let tx = event.clientX - rect.left + 14;
+    let ty = event.clientY - rect.top - 10;
+    if (tx + 230 > W) tx = event.clientX - rect.left - 230;
+
+    tooltip.innerHTML = `
+      <div class="tt-up">${d.up} · <span style="color:${colorMap[d.nucleo]};font-weight:700">${d.nucleo}</span></div>
+      <div class="tt-title">${d.name}</div>
+      <div class="tt-row"><span>Área</span><span>${d.area.toLocaleString('pt-BR',{maximumFractionDigits:1})} ha</span></div>
+      <div class="tt-row"><span>Lon / Lat</span><span>${d.lon.toFixed(3)}, ${d.lat.toFixed(3)}</span></div>`;
+
+    tooltip.style.left = tx + 'px';
+    tooltip.style.top  = ty + 'px';
+    tooltip.classList.add('visible');
+    d3.select(this).attr('opacity', 1).attr('stroke-width', 2).attr('stroke', colorMap[d.nucleo]);
+  })
+  .on('mouseleave', function() {
+    tooltip.classList.remove('visible');
+    d3.select(this).attr('opacity', 0.8).attr('stroke-width', 1).attr('stroke', '#fff');
+  });
+
+// ── BASES DE RASTREIO ────────────────────────────────────────────────────────
+const basesRows = [
+  ["BR01","BASE_RASTREIO_1",-53.484996,-21.965665,1,7,1],
+  ["BR02","BASE_RASTREIO_2",-53.474689,-21.951459,0,6,0],
+  ["BR03","BASE_RASTREIO_3",-53.709340,-21.957951,0,5,0],
+  ["BR04","BASE_RASTREIO_4",-53.570938,-21.947494,1,4,1],
+  ["BR05","BASE_RASTREIO_5",-53.660589,-21.897684,0,8,0],
+  ["BR10","BASE_RASTREIO_10",-53.522107,-21.931916,0,5,1],
+];
+const basesData = basesRows.map(r => ({
+  up: r[0], name: r[1], lon: r[2], lat: r[3],
+  aviao: r[4], caminhao: r[5], helicoptero: r[6]
+}));
+
+// Update header stats
+const totalBases = document.getElementById('total-bases');
+totalBases.textContent = data.length + ' · ' + basesData.length + 'b';
+
+// Sidebar: bases legend item
+const sidebarBases = document.createElement('div');
+sidebarBases.className = 'sidebar-section';
+sidebarBases.innerHTML = `
+  <div class="sidebar-label">Bases de Rastreio</div>
+  <div class="legend-item" style="cursor:default">
+    <svg width="12" height="12" style="flex-shrink:0">
+      <polygon points="6,0 12,6 6,12 0,6" fill="#f0a500" stroke="#fff" stroke-width="1"/>
+    </svg>
+    Bases Rastreio
+    <span class="legend-count">${basesData.length}</span>
+  </div>`;
+document.querySelector('.sidebar').appendChild(sidebarBases);
+
+// Symbol generator: diamond via path
+// size = area em px²; ~314px² ≈ círculo r=10, alinhado com UPs médias
+const diamondSize = 110;
+const diamondPath = d3.symbol().type(d3.symbolDiamond).size(diamondSize)();
+
+// Draw bases as diamonds
+const baseMarkers = gMain.selectAll('.base-marker')
+  .data(basesData).enter().append('path')
+  .attr('class', 'base-marker dot')
+  .attr('d', diamondPath)
+  .attr('transform', d => `translate(${xScale(d.lon)},${yScale(d.lat)})`)
+  .attr('fill', '#f0a500')
+  .attr('opacity', 0.95)
+  .attr('stroke', '#fff')
+  .attr('stroke-width', 1.5)
+  .style('cursor', 'pointer');
+
+// Base labels (only visible when zoomed — usar font size pequeño)
+const baseLabels = gMain.selectAll('.base-label')
+  .data(basesData).enter().append('text')
+  .attr('class', 'base-label')
+  .attr('x', d => xScale(d.lon))
+  .attr('y', d => yScale(d.lat) - 16)
+  .attr('text-anchor', 'middle')
+  .attr('font-size', '8px')
+  .attr('font-family', 'Inter, sans-serif')
+  .attr('font-weight', '700')
+  .attr('fill', '#b07800')
+  .attr('opacity', 0)
+  .attr('pointer-events', 'none')
+  .text(d => d.up);
+
+// Base tooltip
+baseMarkers
+  .on('mousemove', function(event, d) {
+    const rect = mapArea.getBoundingClientRect();
+    let tx = event.clientX - rect.left + 14;
+    let ty = event.clientY - rect.top - 10;
+    if (tx + 230 > W) tx = event.clientX - rect.left - 230;
+
+    const tags = [];
+    if (d.aviao > 0)       tags.push(`<span class="tt-tag" style="color:#005a8e;border-color:#005a8e">✈ Avião ×${d.aviao}</span>`);
+    if (d.caminhao > 0)    tags.push(`<span class="tt-tag" style="color:#e87722;border-color:#e87722">◎ Caminhão ×${d.caminhao}</span>`);
+    if (d.helicoptero > 0) tags.push(`<span class="tt-tag" style="color:#c8372d;border-color:#c8372d">⬡ Helicóptero ×${d.helicoptero}</span>`);
+
+    tooltip.innerHTML = `
+      <div class="tt-up" style="color:#f0a500">◆ ${d.up} · <span style="color:#b07800;font-weight:700">Base de Rastreio</span></div>
+      <div class="tt-title">${d.name}</div>
+      <div class="tt-row"><span>Lon / Lat</span><span>${d.lon.toFixed(4)}, ${d.lat.toFixed(4)}</span></div>
+      ${tags.length ? `<div class="tt-transport">${tags.join('')}</div>` : ''}`;
+
+    tooltip.style.left = tx + 'px';
+    tooltip.style.top  = ty + 'px';
+    tooltip.classList.add('visible');
+    d3.select(this).attr('opacity', 1).attr('stroke', '#f0a500').attr('stroke-width', 2.5);
+  })
+  .on('mouseleave', function() {
+    tooltip.classList.remove('visible');
+    d3.select(this).attr('opacity', 0.95).attr('stroke', '#fff').attr('stroke-width', 1.5);
+  });
+
+// ── SIMULAÇÃO DE OCORRÊNCIA ──────────────────────────────────────────────────
+const VEL = { aviao: 250, helicoptero: 160, caminhao: 70 };
+const EMO = { aviao: '✈', helicoptero: '🚁', caminhao: '🚛' };
+const EMO_LABEL = { aviao: 'Avião', helicoptero: 'Helicóptero', caminhao: 'Caminhão' };
+const COR_RECURSO = { aviao: '#005a8e', helicoptero: '#c8372d', caminhao: '#e87722' };
+
+let simAtiva = false;
+let simTimers = [];
+let fireUPsAtivos = [];
+
+function haversineKm(lon1, lat1, lon2, lat2) {
+  const R = 6371, toR = Math.PI/180;
+  const dLat = (lat2-lat1)*toR, dLon = (lon2-lon1)*toR;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*toR)*Math.cos(lat2*toR)*Math.sin(dLon/2)**2;
+  return R * 2 * Math.asin(Math.sqrt(a));
+}
+
+function showNotif(titulo, sub, tipo='fire') {
+  const n = document.getElementById('notificacao');
+  n.className = 'notificacao ' + tipo;
+  n.querySelector('.notif-title').textContent = titulo;
+  n.querySelector('.notif-sub').textContent   = sub;
+  n.classList.add('visible');
+  setTimeout(() => n.classList.remove('visible'), 3500);
+}
+
+function atualizarPainel(dispatches) {
+  const panel = document.getElementById('ocorrencia-panel');
+  const content = document.getElementById('oc-content');
+  if (!dispatches || dispatches.length === 0) { panel.classList.remove('visible'); return; }
+  panel.classList.add('visible');
+  content.innerHTML = dispatches.map(d =>
+    `<div class="oc-row"><span>${EMO[d.tipo]} ${EMO_LABEL[d.tipo]}</span><span id="eta-${d.id}">ETA ${d.eta}min</span></div>`
+  ).join('') +
+  `<div class="oc-row" style="margin-top:6px"><span>UPs afetadas</span><span>${fireUPsAtivos.length}</span></div>`;
+}
+
+function iniciarSimulacao() {
+  simAtiva = true;
+  const btn = document.getElementById('btn-play');
+  btn.textContent = '■';
+  btn.classList.add('active');
+
+  showNotif('🔥 NOVA OCORRÊNCIA INICIADA', 'Incêndio detectado — despachando recursos');
+
+  // Selecionar 3-5 UPs aleatórias visíveis
+  const candidates = data.filter(d => activeNucleos.has(d.nucleo));
+  const shuffled = [...candidates].sort(() => Math.random() - 0.5);
+  fireUPsAtivos = shuffled.slice(0, 3 + Math.floor(Math.random() * 3));
+
+  // Grupo do fogo
+  const fireGrp = gMain.append('g').attr('class', 'fire-group');
+
+  fireUPsAtivos.forEach(up => {
+    const cx = xScale(up.lon), cy = yScale(up.lat);
+    const r  = rScale(up.area);
+
+    // Ondas de pulso em camadas
+    [0, 400, 800].forEach(delay => {
+      const ring = fireGrp.append('circle')
+        .attr('cx', cx).attr('cy', cy).attr('r', r + 2)
+        .attr('fill', 'none').attr('stroke', '#c8372d')
+        .attr('stroke-width', 1.5).attr('opacity', 0.9);
+      function pulsarRing() {
+        ring.interrupt();
+        ring.attr('r', r+2).attr('opacity', 0.9)
+          .transition().delay(delay % 400).duration(1000)
+          .attr('r', r + 22).attr('opacity', 0)
+          .on('end', () => { if(simAtiva) pulsarRing(); });
+      }
+      pulsarRing();
+    });
+
+    // Círculo vermelho sólido sobre a UP
+    fireGrp.append('circle')
+      .attr('class', 'fire-dot-' + up.up)
+      .attr('cx', cx).attr('cy', cy).attr('r', r)
+      .attr('fill', '#c8372d').attr('opacity', 0.92)
+      .attr('stroke', '#fff').attr('stroke-width', 1);
+
+    // Emoji fogo
+    fireGrp.append('text')
+      .attr('x', cx).attr('y', cy - r - 5)
+      .attr('text-anchor','middle').attr('font-size','13px')
+      .attr('pointer-events','none').text('🔥');
+  });
+
+  // Despachar recursos após 2s
+  const dispatchList = [];
+  let dispId = 0;
+
+  setTimeout(() => {
+    const dispGrp = gMain.append('g').attr('class', 'dispatch-group');
+
+    fireUPsAtivos.forEach((up, fi) => {
+      // Escolher base mais próxima com recurso disponível
+      const tipos = ['aviao','helicoptero','caminhao'];
+      const numR = 1 + (fi % 2); // 1 ou 2 recursos por UP
+
+      for (let ri = 0; ri < numR; ri++) {
+        const tipo = tipos[(fi + ri) % tipos.length];
+        const basesComTipo = basesData.filter(b => b[tipo] > 0);
+        if (!basesComTipo.length) continue;
+
+        // Base mais próxima
+        const base = basesComTipo.reduce((best, b) => {
+          const d = haversineKm(b.lon, b.lat, up.lon, up.lat);
+          return d < best.dist ? {b, dist:d} : best;
+        }, {b: basesComTipo[0], dist:Infinity}).b;
+
+        const distKm = haversineKm(base.lon, base.lat, up.lon, up.lat);
+        const etaMin = Math.max(1, Math.round(distKm / VEL[tipo] * 60));
+        const durMs  = 22000 + ri * 3000 + fi * 1500; // duração visual
+
+        const id = dispId++;
+        dispatchList.push({ id, tipo, eta: etaMin, base: base.up, alvo: up.up });
+        atualizarPainel(dispatchList);
+
+        animarRecurso(dispGrp, base, up, tipo, id, etaMin, durMs, dispatchList);
+      }
+    });
+  }, 2000);
+}
+
+function animarRecurso(grp, base, upAlvo, tipo, id, etaMin, durMs, dispList) {
+  const x1 = xScale(base.lon), y1 = yScale(base.lat);
+  const x2 = xScale(upAlvo.lon), y2 = yScale(upAlvo.lat);
+  const cor = COR_RECURSO[tipo];
+
+  // Linha tracejada (marching ants)
+  const linha = grp.append('line')
+    .attr('class', 'dispatch-line')
+    .attr('x1', x1).attr('y1', y1)
+    .attr('x2', x1).attr('y2', y1)   // começa no ponto de origem
+    .attr('stroke', cor)
+    .attr('stroke-width', 1.5)
+    .attr('stroke-dasharray', '6 6')
+    .attr('opacity', 0.7);
+
+  // Animar extensão da linha nos primeiros 20% do tempo
+  linha.transition().duration(durMs * 0.2)
+    .attr('x2', x2).attr('y2', y2);
+
+  // Grupo do ícone móvel
+  const iconGrp = grp.append('g').attr('class', 'recurso-mov').attr('opacity', 0);
+
+  // Emoji ícone
+  iconGrp.append('text')
+    .attr('text-anchor','middle').attr('dominant-baseline','middle')
+    .attr('font-size','16px').attr('y', 1).attr('filter','drop-shadow(0 1px 2px rgba(0,0,0,0.6))').text(EMO[tipo]);
+
+  // ETA label (acima)
+  const etaTxt = iconGrp.append('text')
+    .attr('id', 'moving-eta-' + id)
+    .attr('text-anchor','middle')
+    .attr('font-size','8px').attr('font-weight','700')
+    .attr('font-family','Inter,sans-serif')
+    .attr('fill', cor).attr('y', -18)
+    .text('ETA ' + etaMin + 'min');
+
+  // Velocidade (abaixo)
+  iconGrp.append('text')
+    .attr('text-anchor','middle')
+    .attr('font-size','8px').attr('font-family','Inter,sans-serif')
+    .attr('fill','rgba(255,255,255,0.7)').attr('y', 24)
+    .text(VEL[tipo] + ' km/h');
+
+  // Animar movimento com d3.timer
+  const startTime = performance.now();
+  iconGrp.transition().duration(300).attr('opacity', 1);
+
+  const timer = d3.timer(elapsed => {
+    const progress = Math.min(elapsed / durMs, 1);
+    const cx = x1 + (x2 - x1) * progress;
+    const cy = y1 + (y2 - y1) * progress;
+    iconGrp.attr('transform', `translate(${cx},${cy})`);
+
+    // Atualizar ETA no ícone e no painel
+    const etaAtual = Math.max(0, Math.round(etaMin * (1 - progress)));
+    etaTxt.text(etaAtual > 0 ? 'ETA ' + etaAtual + 'min' : 'Chegando...');
+    const panelEta = document.getElementById('eta-' + id);
+    if (panelEta) panelEta.textContent = etaAtual > 0 ? 'ETA ' + etaAtual + 'min' : '✓ Chegou';
+
+    if (progress >= 1) {
+      timer.stop();
+      // Flash verde na UP (extinto)
+      grp.selectAll('.fire-dot-' + upAlvo.up)
+        .transition().duration(200).attr('fill','#8dc63f')
+        .transition().delay(800).duration(400).attr('opacity',0).remove();
+      // Fade out dos elementos
+      iconGrp.transition().duration(600).attr('opacity',0).remove();
+      linha.transition().duration(600).attr('opacity',0).remove();
+
+      // Verificar se todos chegaram
+      const allDone = dispList.every(d => {
+        const el = document.getElementById('eta-' + d.id);
+        return !el || el.textContent === '✓ Chegou';
+      });
+      if (allDone) {
+        setTimeout(() => {
+          showNotif('✅ OCORRÊNCIA CONTROLADA', 'Todos os recursos chegaram ao destino', 'ok');
+          setTimeout(encerrarSimulacao, 3500);
+        }, 800);
+      }
+    }
+  });
+  simTimers.push(timer);
+}
+
+function encerrarSimulacao() {
+  simAtiva = false;
+  simTimers.forEach(t => t.stop());
+  simTimers = [];
+  fireUPsAtivos = [];
+
+  d3.selectAll('.fire-group').remove();
+  d3.selectAll('.dispatch-group').remove();
+
+  document.getElementById('ocorrencia-panel').classList.remove('visible');
+
+  const btn = document.getElementById('btn-play');
+  btn.textContent = '▶';
+  btn.classList.remove('active');
+}
+
+document.getElementById('btn-play').addEventListener('click', () => {
+  if (simAtiva) encerrarSimulacao();
+  else iniciarSimulacao();
+});
+
+</script>
+</body>
+</html>
