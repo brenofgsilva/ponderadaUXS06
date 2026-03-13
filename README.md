@@ -178,65 +178,6 @@ Ideia inicial de representação de como poderia ser demonstrado, exibindo as ca
 ![Visualização em D3.js](./assets/visualização.png)
 Visualização robusta, poscionando via csv do parceiro as UPs e instanciando via um csv auxiliar as bases de rastreio para simulações já implementadas no algoritmo e para visualizar no mapa/grafo atual.
 
-### 3. Mapa de Infraestrutura Operacional
-
-**Dupla responsável:** Rebeca e Marcos
-
-#### Relevância
-
-Este mapa fornece uma **visão operacional em tempo real** da infraestrutura de combate a incêndios, essencial para:
-
-- **Planejamento de cobertura territorial**: identificar gaps e áreas descobertas
-- **Análise de redundância**: avaliar se há bases suficientes para atendimento simultâneo
-- **Gestão de ativos críticos**: rastrear localização de caminhões-pipa, torres de monitoramento e equipamentos
-- **Integração com rastreadores**: monitorar posicionamento dinâmico de equipes e veículos
-
-Para a operadora **Márcia**, este mapa oferece contexto geográfico para suas decisões. Para o gestor **Gerson**, permite avaliar se a distribuição de bases está alinhada com a exposição ao risco.
-
-#### Explicação Técnica
-
-O mapa integra três camadas de informação:
-
-1. **Bases operacionais**: marcadores georreferenciados com capacidade de cada central
-2. **Unidades de Produção (UPs)**: polígonos representando áreas florestais com classificação de risco
-3. **Rastreadores ativos**: posições em tempo real de equipes e veículos (quando disponível via API)
-
-A visualização utiliza:
-
-- **D3-geo** para projeções cartográficas
-- **GeoJSON** para representação de polígonos de UPs
-- **Interatividade**: tooltips ao passar o mouse, filtros por região/tipo de recurso
-
-### 4. Diagrama Sankey de Distribuição de Recursos
-
-**Dupla responsável:** Gabriel e Leonardo
-
-#### Relevância
-
-O diagrama Sankey é uma ferramenta poderosa para **visualizar fluxos de recursos ao longo de múltiplas etapas**, permitindo:
-
-- **Rastrear a jornada dos recursos** desde as centrais até as UPs afetadas
-- **Identificar perdas e ineficiências** ao longo do processo (por exemplo, recursos mobilizados mas não utilizados)
-- **Comunicar complexidade logística** de forma intuitiva para stakeholders não-técnicos
-- **Auditar decisões** de mobilização em análises pós-ocorrência
-
-Para **Gerson** (gestor), o Sankey oferece uma narrativa visual clara para apresentações à diretoria. Para **Márcia** (operadora), contextualiza suas decisões dentro do fluxo completo de atendimento.
-
-#### Explicação Técnica
-
-O Sankey representa:
-
-- **Nós de origem**: Centrais operacionais com estoque inicial de recursos
-- **Nós intermediários**: Categorias de recursos (Aeronaves, Terrestres, Brigadistas)
-- **Nós de destino**: UPs que receberam os recursos
-- **Fluxos**: Representados por fitas cuja largura é proporcional ao volume de recursos
-
-Características técnicas:
-
-- **Renderização em D3-sankey** (plugin oficial do D3.js)
-- **Normalização de valores** para garantir comparabilidade entre diferentes tipos de recursos
-- **Interatividade**: hover para exibir valores exatos, filtros temporais para análise histórica
-- **Exportação**: possibilidade de gerar imagens estáticas (SVG/PNG) para relatórios
 
 ### 3. Mapa de Infraestrutura Operacional
 
