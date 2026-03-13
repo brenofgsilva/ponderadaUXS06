@@ -145,33 +145,39 @@ A utilização de um mapa de calor traz diversos benefícios para o sistema de m
 
 ### 2. Grafo Bipartido de Alocação de Recursos
 
-**Dupla responsável:** Pedro e Breno
+**Dupla responsável:** Pedro Jorge e Breno
 
 #### Relevância
 
-O grafo bipartido é a **representação central do modelo matemático de otimização**, traduzindo o problema logístico de alocação de recursos em uma estrutura visual compreensível. Ele permite:
+O grafo bipartido é fundamental para **projetar a alocação de recursos em tempo real**, simulando o atendimento a ocorrências de forma geográfica. Ele permite:
 
-- **Visualizar conexões** entre centrais operacionais (nós de origem) e UPs afetadas (nós de destino)
-- **Identificar gargalos** e sobrecarga de centrais específicas
-- **Avaliar a distribuição de recursos** (aeronaves, terrestres, brigadistas) de forma balanceada
-- **Auditar decisões** de alocação com base em critérios técnicos transparentes
+- **Visualizar o uso de geo3D e coordenadas reais** extraídas do arquivo CSV para precisão territorial exata das UPs (Unidades de Produção).
+- **Propor o tamanho visual das áreas** utilizando um Bubble Chart, onde o raio de cada círculo é diretamente proporcional à quantidade de hectares (área) da respectiva UP.
+- **Acompanhar uma simulação em tempo real** de um acionamento, oferecendo indicativos claros de origem, tipo do recurso despachado (aviões, helicópteros, caminhões) e previsão de chegada (ETA).
 
-Esta visualização é essencial para **Gerson Neves** (gestor) validar que as decisões seguem critérios objetivos e para **Márcia Viana** (operadora) entender rapidamente quais bases estão disponíveis e seus recursos.
+Esta visualização é essencial para **Gerson Neves** (gestor) validar a cobertura técnica do projeto e para **Márcia Viana** (operadora) entender rapidamente quais bases estão disponíveis, como elas se movem na geografia real e quais os tempos hábeis de resposta.
 
 #### Explicação Técnica
 
-O grafo é composto por:
+A visualização do HTML foca estritamente na representatividade front-end orientada a dados, e é construída utilizando o D3.js. Ela inclui as seguintes implementações:
 
-- **Dois conjuntos de nós**:
-  - Centrais operacionais (C = {c₁, c₂, ..., cₙ}) à esquerda
-  - Unidades de Produção/UPs (U = {u₁, u₂, ..., uₘ}) à direita
-- **Arestas ponderadas** representando fluxos de recursos (k ∈ K = {Aeronaves, Terrestres, Brigadistas})
-- **Atributos visuais**:
-  - Espessura das arestas proporcional ao volume de recursos alocados
-  - Cores diferenciadas por tipo de recurso
-  - Rótulos com distância, tempo de deslocamento e custo operacional normalizado
+- **Escalas Dinâmicas e Proporções**:
+  - `xScale` e `yScale` para mapear automaticamente os eixos `lon` e `lat` num canvas SVG dinâmico.
+  - O raio das bolhas (`rScale`) mapeado matematicamente sob um `d3.scaleSqrt()` baseado na área de cada reserva afetada (hectares).
+- **Simulação Interativa**: Uma rotina nativa de timeout (`d3.timer`) dispara animações em tempo real (marching ants e progresso geográfico) conectando centros operacionais ('Bases de Rastreio') com hotspots simulados sob um raio em movimento.
+- **Diferenciação Estilística no Canvas**: Cores temáticas da Suzano, tooltips detalhados disparados reativamente sobre as bolhas flutuantes, e controles de Zoom base (`d3.zoom`) orientados aos eixos do cenário de distribuição no Mato Grosso do Sul.
 
-A renderização utiliza **force-directed layouts** do D3.js para posicionamento automático dos nós, facilitando a leitura de redes complexas.
+#### Imagens da Visualização
+
+**Primeira Visualização (Rascunho)**
+![Rascunho do Grafo Bipartido](./assets/rascunho.png)
+
+Ideia inicial de representação de como poderia ser demonstrado, exibindo as capacidades e as demandas no estilo de grafo, para simplificar a visualização.
+
+**Visualização em HTML/D3.js**
+![Visualização em D3.js](./assets/visualização.png)
+Visualização robusta, poscionando via csv do parceiro as UPs e instanciando via um csv auxiliar as bases de rastreio para simulações já implementadas no algoritmo e para visualizar no mapa/grafo atual.
+
 
 ### 3. Mapa de Infraestrutura Operacional
 
