@@ -1,0 +1,699 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sankey - Rastreadores x UPs</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family:
+          "Inter",
+          system-ui,
+          -apple-system,
+          sans-serif;
+        background: #f0f2f5;
+        color: #1e293b;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+
+      .wrapper {
+        max-width: 1440px;
+        margin: 32px auto;
+        padding: 0 24px;
+      }
+
+      .chart-card {
+        background: #ffffff;
+        border-radius: 20px;
+        box-shadow:
+          0 1px 3px rgba(15, 23, 42, 0.04),
+          0 8px 32px rgba(15, 23, 42, 0.06);
+        padding: 32px 32px 24px 32px;
+      }
+
+      .header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-bottom: 8px;
+      }
+
+      .header-text {
+        flex: 1;
+        min-width: 240px;
+      }
+
+      .title {
+        font-size: 20px;
+        font-weight: 700;
+        margin: 0 0 4px 0;
+        letter-spacing: -0.01em;
+        color: #0f172a;
+      }
+
+      .subtitle {
+        margin: 0;
+        color: #64748b;
+        font-size: 13.5px;
+        line-height: 1.5;
+        max-width: 520px;
+      }
+
+      #sankey {
+        width: 100%;
+        min-height: 820px;
+        position: relative;
+      }
+
+      .column-title {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .legend-label {
+        font-size: 11.5px;
+        fill: #475569;
+        font-weight: 500;
+      }
+
+      .node-label {
+        font-size: 13px;
+        font-weight: 600;
+        fill: #334155;
+        dominant-baseline: middle;
+      }
+
+      .node-label-count {
+        font-size: 13px;
+        font-weight: 500;
+        fill: #94a3b8;
+        dominant-baseline: middle;
+      }
+
+      .node-rect {
+        transition: filter 280ms cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      .link {
+        fill: none;
+        transition:
+          stroke-opacity 280ms cubic-bezier(0.4, 0, 0.2, 1),
+          filter 280ms cubic-bezier(0.4, 0, 0.2, 1);
+        cursor: pointer;
+      }
+
+      .tooltip {
+        position: absolute;
+        pointer-events: none;
+        background: #0f172a;
+        color: #f1f5f9;
+        padding: 12px 16px;
+        border-radius: 12px;
+        font-size: 12.5px;
+        line-height: 1.55;
+        box-shadow:
+          0 4px 6px -1px rgba(0, 0, 0, 0.1),
+          0 20px 40px -4px rgba(0, 0, 0, 0.22);
+        opacity: 0;
+        transform: translate(-50%, calc(-100% - 14px));
+        white-space: nowrap;
+        backdrop-filter: blur(8px);
+        transition: opacity 180ms cubic-bezier(0.4, 0, 0.2, 1);
+        z-index: 10;
+      }
+
+      .tooltip .tt-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+        font-weight: 600;
+        font-size: 13px;
+        color: #ffffff;
+      }
+
+      .tooltip .tt-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+
+      .tooltip .tt-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 18px;
+        color: #cbd5e1;
+      }
+
+      .tooltip .tt-row span:last-child {
+        font-weight: 600;
+        color: #ffffff;
+      }
+
+      .footer-note {
+        margin-top: 16px;
+        padding-top: 16px;
+        border-top: 1px solid #f1f5f9;
+        font-size: 11.5px;
+        color: #94a3b8;
+      }
+
+      .footer-note code {
+        background: #f1f5f9;
+        padding: 2px 5px;
+        border-radius: 4px;
+        font-size: 11px;
+        color: #64748b;
+      }
+
+      /* Entrance animation */
+      @keyframes fadeSlideUp {
+        from {
+          opacity: 0;
+          transform: translateY(12px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .chart-card {
+        animation: fadeSlideUp 0.5s cubic-bezier(0.4, 0, 0.2, 1) both;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrapper">
+      <div class="chart-card">
+        <div class="header">
+          <div class="header-text">
+            <h1 class="title">Alocação de recursos por rastreador e UP</h1>
+            <p class="subtitle">
+              Cada fluxo representa um recurso enviado de um rastreador para uma
+              UP. A cor identifica o tipo de recurso.
+            </p>
+          </div>
+        </div>
+
+        <div id="sankey"></div>
+
+        <div class="footer-note">
+          Troque o array <code>rawAllocations</code> pelos seus dados reais.
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
+      import {
+        sankey,
+        sankeyLinkHorizontal,
+      } from "https://cdn.jsdelivr.net/npm/d3-sankey@0.12/+esm";
+
+      const trackerOrder = ["X", "Y", "Z"];
+      const upOrder = ["C2CE", "UP Norte", "UP Sul", "UP Leste"];
+
+      const resourceOrder = [
+        "Avião",
+        "Helicóptero",
+        "Veículo 4x2",
+        "Caminhão",
+        "Pick-up",
+        "Brigadista",
+      ];
+
+      const resourceColors = {
+        Avião: "#4F8FF7",
+        Helicóptero: "#22B8CF",
+        "Veículo 4x2": "#F0A830",
+        Caminhão: "#F06B6B",
+        "Pick-up": "#34C38F",
+        Brigadista: "#9B7BF7",
+      };
+
+      const nodeColors = {
+        tracker: "#34C38F",
+        up: "#9B7BF7",
+      };
+
+      const rawAllocations = [
+        {
+          tracker: "X",
+          up: "C2CE",
+          resources: {
+            Avião: 4,
+            Helicóptero: 1,
+            "Veículo 4x2": 0,
+            Caminhão: 2,
+            "Pick-up": 0,
+            Brigadista: 3,
+          },
+        },
+        {
+          tracker: "Y",
+          up: "C2CE",
+          resources: {
+            Avião: 0,
+            Helicóptero: 2,
+            "Veículo 4x2": 1,
+            Caminhão: 0,
+            "Pick-up": 2,
+            Brigadista: 0,
+          },
+        },
+        {
+          tracker: "Z",
+          up: "UP Norte",
+          resources: {
+            Avião: 0,
+            Helicóptero: 0,
+            "Veículo 4x2": 2,
+            Caminhão: 1,
+            "Pick-up": 0,
+            Brigadista: 2,
+          },
+        },
+        {
+          tracker: "X",
+          up: "UP Sul",
+          resources: {
+            Avião: 1,
+            Helicóptero: 0,
+            "Veículo 4x2": 0,
+            Caminhão: 1,
+            "Pick-up": 1,
+            Brigadista: 0,
+          },
+        },
+        {
+          tracker: "Y",
+          up: "UP Leste",
+          resources: {
+            Avião: 0,
+            Helicóptero: 1,
+            "Veículo 4x2": 0,
+            Caminhão: 2,
+            "Pick-up": 0,
+            Brigadista: 1,
+          },
+        },
+      ];
+
+      const formatInt = d3.format(",.0f");
+
+      function indexOrEnd(arr, value) {
+        const i = arr.indexOf(value);
+        return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+      }
+
+      function buildGraph(data) {
+        const trackerNames = Array.from(
+          new Set(data.map((d) => d.tracker)),
+        ).sort(
+          (a, b) => indexOrEnd(trackerOrder, a) - indexOrEnd(trackerOrder, b),
+        );
+
+        const upNames = Array.from(new Set(data.map((d) => d.up))).sort(
+          (a, b) => indexOrEnd(upOrder, a) - indexOrEnd(upOrder, b),
+        );
+
+        const nodes = [
+          ...trackerNames.map((name) => ({
+            id: `tracker:${name}`,
+            name,
+            group: "tracker",
+          })),
+          ...upNames.map((name) => ({
+            id: `up:${name}`,
+            name,
+            group: "up",
+          })),
+        ];
+
+        const links = [];
+
+        const sortedRows = [...data].sort((a, b) => {
+          const trackerCmp =
+            indexOrEnd(trackerOrder, a.tracker) -
+            indexOrEnd(trackerOrder, b.tracker);
+          if (trackerCmp !== 0) return trackerCmp;
+          return indexOrEnd(upOrder, a.up) - indexOrEnd(upOrder, b.up);
+        });
+
+        for (const row of sortedRows) {
+          for (const resource of resourceOrder) {
+            const value = Number(row.resources?.[resource] ?? 0);
+            if (value > 0) {
+              links.push({
+                source: `tracker:${row.tracker}`,
+                target: `up:${row.up}`,
+                value,
+                resource,
+                color: resourceColors[resource] ?? "#94A3B8",
+              });
+            }
+          }
+        }
+
+        return { nodes, links };
+      }
+
+      let resizeTimer;
+      function debouncedRender() {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(renderSankey, 150);
+      }
+
+      function renderSankey() {
+        const container = d3.select("#sankey");
+        container.selectAll("*").remove();
+
+        const width = Math.max(1100, container.node().clientWidth || 1100);
+        const height = 800;
+
+        const margin = { top: 80, right: 190, bottom: 30, left: 190 };
+
+        const svg = container
+          .append("svg")
+          .attr("viewBox", `0 0 ${width} ${height}`)
+          .attr("width", "100%")
+          .attr("height", height)
+          .style("overflow", "visible");
+
+        const defs = svg.append("defs");
+
+        const tooltip = container.append("div").attr("class", "tooltip");
+
+        const graphData = buildGraph(rawAllocations);
+
+        const sankeyGenerator = sankey()
+          .nodeId((d) => d.id)
+          .nodeWidth(18)
+          .nodePadding(42)
+          .nodeSort(null)
+          .linkSort(null)
+          .extent([
+            [margin.left, margin.top + 36],
+            [width - margin.right, height - margin.bottom],
+          ]);
+
+        const graph = sankeyGenerator({
+          nodes: graphData.nodes.map((d) => ({ ...d })),
+          links: graphData.links.map((d) => ({ ...d })),
+        });
+
+        graph.links.forEach((link, i) => {
+          const gradient = defs
+            .append("linearGradient")
+            .attr("id", `link-gradient-${i}`)
+            .attr("gradientUnits", "userSpaceOnUse")
+            .attr("x1", link.source.x1)
+            .attr("x2", link.target.x0);
+
+          gradient
+            .append("stop")
+            .attr("offset", "0%")
+            .attr("stop-color", link.color)
+            .attr("stop-opacity", 0.55);
+
+          gradient
+            .append("stop")
+            .attr("offset", "100%")
+            .attr("stop-color", link.color)
+            .attr("stop-opacity", 0.35);
+        });
+
+        ["tracker", "up"].forEach((group) => {
+          const grad = defs
+            .append("linearGradient")
+            .attr("id", `node-grad-${group}`)
+            .attr("x1", "0%")
+            .attr("y1", "0%")
+            .attr("x2", "0%")
+            .attr("y2", "100%");
+
+          grad
+            .append("stop")
+            .attr("offset", "0%")
+            .attr("stop-color", nodeColors[group])
+            .attr("stop-opacity", 1);
+
+          grad
+            .append("stop")
+            .attr("offset", "100%")
+            .attr(
+              "stop-color",
+              d3.color(nodeColors[group]).darker(0.35).formatHex(),
+            )
+            .attr("stop-opacity", 1);
+        });
+
+        const shadow = defs
+          .append("filter")
+          .attr("id", "node-shadow")
+          .attr("x", "-20%")
+          .attr("y", "-10%")
+          .attr("width", "140%")
+          .attr("height", "130%");
+
+        shadow
+          .append("feDropShadow")
+          .attr("dx", 0)
+          .attr("dy", 2)
+          .attr("stdDeviation", 4)
+          .attr("flood-color", "rgba(15,23,42,0.10)");
+
+        graph.nodes.forEach((node, i) => {
+          defs
+            .append("clipPath")
+            .attr("id", `node-clip-${i}`)
+            .append("rect")
+            .attr("x", node.group === "tracker" ? node.x1 : node.x0 - 600)
+            .attr("y", node.y0 - 1)
+            .attr("width", 600)
+            .attr("height", node.y1 - node.y0 + 2);
+        });
+
+        const leftX = d3.min(
+          graph.nodes.filter((d) => d.group === "tracker"),
+          (d) => d.x0,
+        );
+        const rightX = d3.max(
+          graph.nodes.filter((d) => d.group === "up"),
+          (d) => d.x1,
+        );
+
+        svg
+          .append("text")
+          .attr("class", "column-title")
+          .attr("x", leftX + 9)
+          .attr("y", margin.top + 14)
+          .attr("text-anchor", "middle")
+          .attr("fill", nodeColors.tracker)
+          .text("RASTREADORES");
+
+        svg
+          .append("text")
+          .attr("class", "column-title")
+          .attr("x", rightX - 9)
+          .attr("y", margin.top + 14)
+          .attr("text-anchor", "middle")
+          .attr("fill", nodeColors.up)
+          .text("UPS");
+
+        const usedResources = resourceOrder.filter((resource) =>
+          graph.links.some((link) => link.resource === resource),
+        );
+
+        const legendSpacing = 120;
+        const legendTotalW = usedResources.length * legendSpacing;
+        const legend = svg
+          .append("g")
+          .attr(
+            "transform",
+            `translate(${width / 2 - legendTotalW / 2}, ${margin.top - 30})`,
+          );
+
+        const legendItem = legend
+          .selectAll(".legend-item")
+          .data(usedResources)
+          .join("g")
+          .attr("class", "legend-item")
+          .attr("transform", (d, i) => `translate(${i * legendSpacing}, 0)`);
+
+        legendItem
+          .append("rect")
+          .attr("x", 0)
+          .attr("y", -5)
+          .attr("width", 10)
+          .attr("height", 10)
+          .attr("rx", 3)
+          .attr("fill", (d) => resourceColors[d]);
+
+        legendItem
+          .append("text")
+          .attr("class", "legend-label")
+          .attr("x", 16)
+          .attr("y", 1)
+          .attr("dominant-baseline", "middle")
+          .text((d) => d);
+
+        // Links
+        const linkGroup = svg.append("g").attr("fill", "none");
+
+        const links = linkGroup
+          .selectAll("path")
+          .data(graph.links)
+          .join("path")
+          .attr("class", "link")
+          .attr("d", sankeyLinkHorizontal())
+          .attr("stroke", (d, i) => `url(#link-gradient-${i})`)
+          .attr("stroke-width", (d) => Math.max(1.5, d.width))
+          .attr("stroke-opacity", 0);
+
+        links
+          .transition()
+          .duration(800)
+          .delay((d, i) => i * 40)
+          .ease(d3.easeCubicOut)
+          .attr("stroke-opacity", 0.6);
+
+        const nodeGroup = svg.append("g");
+
+        const nodes = nodeGroup
+          .selectAll("g")
+          .data(graph.nodes)
+          .join("g")
+          .style("cursor", "default");
+
+        nodes
+          .append("rect")
+          .attr("class", "node-rect")
+          .attr("x", (d) => d.x0)
+          .attr("y", (d) => d.y0)
+          .attr("height", (d) => Math.max(14, d.y1 - d.y0))
+          .attr("width", (d) => d.x1 - d.x0)
+          .attr("rx", 0)
+          .attr("fill", (d) => `url(#node-grad-${d.group})`)
+          .attr("filter", "url(#node-shadow)")
+          .attr("opacity", 0)
+          .transition()
+          .duration(600)
+          .delay((d, i) => 200 + i * 60)
+          .ease(d3.easeCubicOut)
+          .attr("opacity", 1);
+
+        nodes
+          .append("text")
+          .attr("class", "node-label")
+          .attr("x", (d) => (d.group === "tracker" ? d.x0 - 14 : d.x1 + 14))
+          .attr("y", (d) => (d.y0 + d.y1) / 2)
+          .attr("text-anchor", (d) => (d.group === "tracker" ? "end" : "start"))
+          .attr("opacity", 0)
+          .each(function (d) {
+            const el = d3.select(this);
+            el.append("tspan").text(d.name);
+            el.append("tspan")
+              .attr("class", "node-label-count")
+              .attr("fill", "#94a3b8")
+              .attr("font-weight", 500)
+              .text(` ${formatInt(d.value)}`);
+          })
+          .transition()
+          .duration(600)
+          .delay((d, i) => 300 + i * 60)
+          .ease(d3.easeCubicOut)
+          .attr("opacity", 1);
+
+        links
+          .on("mousemove", function (event, d) {
+            d3.select(this).raise();
+
+            links
+              .transition()
+              .duration(200)
+              .attr("stroke-opacity", (l) => (l === d ? 0.85 : 0.08));
+
+            nodes
+              .transition()
+              .duration(200)
+              .style("opacity", (n) =>
+                n.id === d.source.id || n.id === d.target.id ? 1 : 0.2,
+              );
+
+            tooltip
+              .style("opacity", 1)
+              .style("left", `${event.offsetX}px`)
+              .style("top", `${event.offsetY}px`).html(`
+              <div class="tt-header">
+                <span class="tt-dot" style="background:${d.color}"></span>
+                ${d.source.name} → ${d.target.name}
+              </div>
+              <div class="tt-row"><span>Recurso</span><span>${d.resource}</span></div>
+              <div class="tt-row"><span>Quantidade</span><span>${formatInt(d.value)}</span></div>
+            `);
+          })
+          .on("mouseleave", function () {
+            links.transition().duration(350).attr("stroke-opacity", 0.6);
+
+            nodes.transition().duration(350).style("opacity", 1);
+
+            tooltip.style("opacity", 0);
+          });
+
+        nodes
+          .on("mouseenter", function (event, d) {
+            const connected = new Set();
+            graph.links.forEach((l) => {
+              if (l.source.id === d.id || l.target.id === d.id) {
+                connected.add(l.source.id);
+                connected.add(l.target.id);
+              }
+            });
+
+            links
+              .transition()
+              .duration(200)
+              .attr("stroke-opacity", (l) =>
+                l.source.id === d.id || l.target.id === d.id ? 0.85 : 0.06,
+              );
+
+            nodes
+              .transition()
+              .duration(200)
+              .style("opacity", (n) => (connected.has(n.id) ? 1 : 0.2));
+          })
+          .on("mouseleave", function () {
+            links.transition().duration(350).attr("stroke-opacity", 0.6);
+
+            nodes.transition().duration(350).style("opacity", 1);
+
+            tooltip.style("opacity", 0);
+          });
+      }
+
+      renderSankey();
+      window.addEventListener("resize", debouncedRender);
+    </script>
+  </body>
+</html>
