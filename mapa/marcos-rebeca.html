@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Bases da Suzano no Brasil</title>
+    <title>Mapa do Brasil com D3.js</title>
     <style>
       @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Playfair+Display:wght@700&display=swap");
 
@@ -305,17 +305,17 @@
     <main>
       <section class="hero">
         <p class="eyebrow">Projeto inicial</p>
-        <h1>Bases da Suzano no Brasil</h1>
+        <h1>Mapa do Brasil com D3.js</h1>
         <p>
-          Esta visualização mostra a atuação da Suzano no território brasileiro,
-          destacando os estados com presença operacional e exibindo UPS e Bases
-          por estado selecionado.
+          Esta base carrega um GeoJSON público dos estados brasileiros, desenha
+          o mapa em SVG e ajusta o layout automaticamente conforme o tamanho da
+          tela.
         </p>
       </section>
 
       <section class="map-shell" aria-labelledby="map-title">
         <div class="map-header">
-          <h2 id="map-title">Atuação e bases da Suzano</h2>
+          <h2 id="map-title">Estados brasileiros</h2>
           <p class="status" id="status">Carregando dados geográficos...</p>
         </div>
 
@@ -324,7 +324,7 @@
             <svg
               id="map"
               role="img"
-              aria-label="Mapa da atuação da Suzano por estado no Brasil"
+              aria-label="Mapa do Brasil com os estados"
             ></svg>
             <div class="tooltip" id="tooltip" aria-hidden="true"></div>
           </div>
