@@ -16,6 +16,8 @@
     - [3. Mapa de Infraestrutura Operacional](#3-mapa-de-infraestrutura-operacional)
       - [Relevância](#relevância-2)
       - [Explicação Técnica](#explicação-técnica-2)
+      - [Implementação Atual da Dupla 3 (Rebeca e Marcos)](#implementação-atual-da-dupla-3-rebeca-e-marcos)
+      - [Como Executar a Visualização da Dupla 3](#como-executar-a-visualização-da-dupla-3)
     - [4. Diagrama Sankey de Distribuição de Recursos](#4-diagrama-sankey-de-distribuição-de-recursos)
       - [Relevância](#relevância-3)
       - [Evolução da Visualização](#evolução-da-visualização)
@@ -55,18 +57,16 @@ Todas as visualizações foram desenvolvidas em **D3.js** e são integradas ao s
 
 O **Mapa de Calor dos Focos de Incêndio** é uma ferramenta essencial para **análise geoespacial** e **gestão de risco ambiental**. Ele permite transformar grandes volumes de registros históricos de incêndios em uma visualização intuitiva, facilitando a identificação de **padrões e tendências ao longo do território monitorado**.
 
-Ao consolidar os dados em uma representação visual baseada em intensidade, o mapa possibilita identificar rapidamente **regiões com maior concentração de ocorrências**, conhecidas como *hotspots*. Essas áreas representam locais com maior probabilidade de novos eventos, seja por fatores **ambientais, climáticos ou operacionais**.
+Ao consolidar os dados em uma representação visual baseada em intensidade, o mapa possibilita identificar rapidamente **regiões com maior concentração de ocorrências**, conhecidas como _hotspots_. Essas áreas representam locais com maior probabilidade de novos eventos, seja por fatores **ambientais, climáticos ou operacionais**.
 
 Essa visualização contribui diretamente para diferentes níveis de **tomada de decisão**:
 
-- **Monitoramento operacional:** identificação de áreas que demandam vigilância mais frequente  
-- **Planejamento preventivo:** definição estratégica do posicionamento de brigadas e equipamentos  
-- **Gestão de recursos:** priorização de investimentos em infraestrutura de combate e monitoramento  
-- **Análise histórica:** compreensão de padrões sazonais relacionados a clima, seca e atividades humanas  
+- **Monitoramento operacional:** identificação de áreas que demandam vigilância mais frequente
+- **Planejamento preventivo:** definição estratégica do posicionamento de brigadas e equipamentos
+- **Gestão de recursos:** priorização de investimentos em infraestrutura de combate e monitoramento
+- **Análise histórica:** compreensão de padrões sazonais relacionados a clima, seca e atividades humanas
 
 Além disso, ao cruzar os dados de incêndio com informações de **UPs (Unidades de Produção)**, **fazendas**, **áreas operacionais** e **núcleos**, o sistema permite compreender como os focos se distribuem dentro da área de atuação da empresa, auxiliando no **planejamento de ações preventivas** e **respostas rápidas**.
-
-
 
 #### Explicação Técnica
 
@@ -74,15 +74,11 @@ A implementação do mapa de calor utiliza **técnicas modernas de visualizaçã
 
 O sistema é construído a partir de **três componentes principais**.
 
-
-
 **1. Base Cartográfica**
 
 O mapa utiliza uma **base geográfica real das regiões onde a Suzano opera**, representada através de arquivos cartográficos (**GeoJSON** ou **TopoJSON**). Esses arquivos contêm os **limites territoriais** que permitem posicionar corretamente os dados sobre o mapa.
 
 A renderização é feita utilizando a biblioteca **D3.js**, especificamente o módulo **D3-geo**, que projeta **coordenadas geográficas (latitude e longitude)** para o sistema de coordenadas da tela.
-
-
 
 **2. Integração de Dados Operacionais**
 
@@ -92,12 +88,12 @@ O sistema utiliza **dois conjuntos principais de dados**.
 
 Contém informações estruturais das unidades operacionais:
 
-- UP  
-- Fazenda  
-- Área  
-- Núcleo  
-- Latitude  
-- Longitude  
+- UP
+- Fazenda
+- Área
+- Núcleo
+- Latitude
+- Longitude
 
 Esse arquivo define os **pontos geográficos fixos** onde os recursos operacionais estão localizados.
 
@@ -105,8 +101,8 @@ Esse arquivo define os **pontos geográficos fixos** onde os recursos operaciona
 
 Contém os registros históricos de ocorrências:
 
-- UP  
-- Data de Registro  
+- UP
+- Data de Registro
 
 A partir desses dados, o sistema realiza automaticamente o cálculo de:
 
@@ -116,21 +112,17 @@ A partir desses dados, o sistema realiza automaticamente o cálculo de:
 
 Esses cálculos são processados dinamicamente no navegador utilizando **JavaScript** e **D3**.
 
-
-
 #### 3. Geração do Heatmap
 
-Após o processamento dos dados, o sistema gera uma **camada de calor (*heatmap*)** sobre o mapa.
+Após o processamento dos dados, o sistema gera uma **camada de calor (_heatmap_)** sobre o mapa.
 
 Cada ponto associado a uma **UP** recebe um **peso proporcional ao número de ocorrências registradas**. A intensidade visual é então representada por um **gradiente de cores**, onde:
 
-- **Cores claras (amarelo)** → baixa concentração de ocorrências  
-- **Cores intermediárias (laranja)** → concentração moderada  
-- **Cores quentes (vermelho)** → alta concentração de focos  
+- **Cores claras (amarelo)** → baixa concentração de ocorrências
+- **Cores intermediárias (laranja)** → concentração moderada
+- **Cores quentes (vermelho)** → alta concentração de focos
 
 Esse tipo de visualização permite representar rapidamente a **densidade espacial dos eventos**, transformando dados complexos em uma leitura visual simples. Em mapas de calor, regiões com maior intensidade de dados aparecem com **cores mais fortes**, facilitando a identificação de **áreas críticas**.
-
-
 
 #### Benefícios para o Sistema
 
@@ -208,6 +200,48 @@ A visualização utiliza:
 - **GeoJSON** para representação de polígonos de UPs
 - **Interatividade**: tooltips ao passar o mouse, filtros por região/tipo de recurso
 
+#### Implementação Atual da Dupla 3 (Rebeca e Marcos)
+
+A implementação atual da Dupla 3 amplia a proposta do mapa de infraestrutura operacional, com foco em análise territorial da atuação da Suzano por estado e inspeção de detalhes operacionais.
+
+Os principais elementos da solução são:
+
+- **Identificação automática dos estados com atuação**, por meio do cruzamento entre a base geográfica (GeoJSON) e o conjunto de localizações operacionais (CSV).
+- **Seleção interativa por estado**, com atualização do contexto analítico e aplicação de foco geográfico (zoom automático).
+- **Painel de síntese operacional**, consolidando total de localizações, quantidade de UPS, quantidade de bases e área agregada.
+- **Representação visual diferenciada de ativos**, com UPS em marcadores circulares e bases em marcadores losangulares.
+- **Navegação espacial avançada** (zoom e panning), preservando o tamanho visual dos marcadores para manter legibilidade em diferentes escalas.
+
+As capturas abaixo ilustram o comportamento da visualização:
+
+**Visão inicial (sem estado selecionado):**
+
+![Mapa Suzano - visão inicial](./assets/mapa-sem-foco.png)
+
+**Visão com estado selecionado (foco + marcadores):**
+
+![Mapa Suzano - estado selecionado](./assets/mapa-foco.png)
+
+#### Como Executar a Visualização da Dupla 3
+
+Para executar a visualização da Dupla 3, utilize um servidor local simples a partir do diretório `mapa`:
+
+```bash
+cd mapa
+npx serve .
+```
+
+A seguir, abra no navegador o endereço exibido no terminal (tipicamente `http://localhost:3000`).
+
+Caso seja necessário fixar a porta de execução:
+
+```bash
+cd mapa
+npx serve -l 5123 .
+```
+
+Nesse caso, acesse `http://localhost:5123`.
+
 ### 4. Diagrama Sankey de Distribuição de Recursos
 
 **Dupla responsável:** Gabriel e Leonardo
@@ -236,13 +270,11 @@ Com as recentes melhorias e ajustes no cenário, a visualização evoluiu para r
 
 - **Simplificação da Estrutura (De 3 para 2 camadas):** A versão anterior possuía 3 colunas (Rastreador → Recurso → UP), onde os recursos atuavam como nós intermediários. Na nova versão, adotou-se uma estrutura mais concisa com apenas 2 colunas principais (Rastreadores → UPs).
 - **Recursos Representados por Fluxos:** O tipo de recurso (Avião, Bomba Costal, Caminhão Pipa, Drone, Helicóptero, Motoserra, Soprador) agora é representado pela **cor dos próprios fluxos (links)** de conexão. Uma nova legenda clara foi adicionada para facilitar a identificação visual rápida de cada mobilização.
-- **Interatividade Aprimorada e Tooltips:** Foram implementados efeitos de *hover* dinâmicos nos nós e vínculos. Ao posicionar o mouse sobre um elemento, o restante ganha opacidade e a seleção é realçada, enquanto um **tooltip detalhado** aparece automaticamente listando a origem, destino, tipo de recurso mobilizado e sua quantidade correspondente exata.
+- **Interatividade Aprimorada e Tooltips:** Foram implementados efeitos de _hover_ dinâmicos nos nós e vínculos. Ao posicionar o mouse sobre um elemento, o restante ganha opacidade e a seleção é realçada, enquanto um **tooltip detalhado** aparece automaticamente listando a origem, destino, tipo de recurso mobilizado e sua quantidade correspondente exata.
 
 **SankeyNovo com Tooltips e Hover:**
 
 ![Sankey Novo](./assets/new-sankey-tooltip.png)
-
-
 
 ## Como Executar
 
