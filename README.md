@@ -135,7 +135,7 @@ A utilização de um mapa de calor traz diversos benefícios para o sistema de m
 
 ![Mapa de Calor de Focos de Incêndio](/assets/heatmap.png)
 
-### 2. Grafo Bipartido de Alocação de Recursos
+### 2. Grafo Bipartido de Alocação de Recursos ⭐ Usado na apresentação e validado positivamente pelo parceiro.
 
 **Dupla responsável:** Pedro Jorge e Breno
 
